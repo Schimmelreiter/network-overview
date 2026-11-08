@@ -13,9 +13,9 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
 
@@ -34,12 +34,12 @@ jobs:
           Start-Process -Wait -FilePath publish/win-x64/NetworkOverview.exe -ArgumentList '--render-demo', "$PWD/demo-light.png", "$PWD/demo-dark.png"
           if (-not (Test-Path demo-light.png)) { throw 'demo rendering failed' }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: example-map
           path: demo-*.png
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: NetworkOverview-win-x64
           path: publish/win-x64/NetworkOverview.exe
