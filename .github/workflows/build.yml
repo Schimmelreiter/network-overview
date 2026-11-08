@@ -34,12 +34,12 @@ jobs:
           Start-Process -Wait -FilePath publish/win-x64/NetworkOverview.exe -ArgumentList '--render-demo', "$PWD/demo-light.png", "$PWD/demo-dark.png"
           if (-not (Test-Path demo-light.png)) { throw 'demo rendering failed' }
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: example-map
           path: demo-*.png
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: NetworkOverview-win-x64
           path: publish/win-x64/NetworkOverview.exe
