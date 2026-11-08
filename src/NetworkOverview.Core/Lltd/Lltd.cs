@@ -328,6 +328,7 @@ namespace NetworkOverview.Core.Lltd
         public List<RoundResult> Rounds = new List<RoundResult>();
         public List<TNode> Tree = new List<TNode>();
         public List<string> Log = new List<string>();
+        public List<string> NonObservers = new List<string>();
 
         // Internal state
         byte[] me;
@@ -738,10 +739,20 @@ namespace NetworkOverview.Core.Lltd
             resp.Sort();
             if (resp.Count == 0) return;
 
+            // Self-test: can a responder observe probes addressed to a foreign (test) address?
+            // Responders that cannot are still used as probe senders and destinations, but not as observers.
+            List<string> observers = new List<string>();
+            foreach (string m in resp)
+            {
+                if (Cancel) break;
+                if (CanObserve(m)) observers.Add(m);
+                else { L("cannot observe: " + m); NonObservers.Add(m); }
+            }
+
             string root = null;
             if (!MyWired)
             {
-                foreach (string m in resp) if (!wirelessSet.Contains(m)) { root = m; break; }
+                foreach (string m in observers) if (!wirelessSet.Contains(m)) { root = m; break; }
                 if (root == null) { L("no wired root"); return; }
             }
             RootMac = root == null ? meStr : root;
@@ -749,16 +760,15 @@ namespace NetworkOverview.Core.Lltd
             List<string> all = new List<string>();
             foreach (string m in resp) if (m != root) all.Add(m);
             List<string> wired = new List<string>();
-            foreach (string m in all) if (!wirelessSet.Contains(m)) wired.Add(m);
-
+            foreach (string m in all) if (!wirelessSet.Contains(m) && observers.Contains(m)) wired.Add(m);
 
             List<string[]> plan = new List<string[]>();
             for (int i = 0; i < all.Count; i++)
                 for (int j = i + 1; j < all.Count; j++)
                 {
                     string a = all[i], b = all[j];
-                    if (!wirelessSet.Contains(a)) plan.Add(new string[] { a, b, "" });
-                    else if (!wirelessSet.Contains(b)) plan.Add(new string[] { b, a, "" });
+                    if (wired.Contains(a)) plan.Add(new string[] { a, b, "" });
+                    else if (wired.Contains(b)) plan.Add(new string[] { b, a, "" });
                 }
             foreach (string x in ExtraMacs)
             {
@@ -808,7 +818,7 @@ namespace NetworkOverview.Core.Lltd
                 if (Cancel || clock.Elapsed.TotalSeconds > MaxSeconds) { Partial = true; break; }
                 RoundResult again = RoundChecked(root, kv.Value.C, kv.Key, true, all);
                 if (again == null) continue;
-                if (again.Valid && SameSet(again.AtC, kv.Value.AtC)) { kv.Value.Confirmed = true; continue; }
+                if (again.Valid && SameSet(Only(again.AtC, all), Only(kv.Value.AtC, all))) { kv.Value.Confirmed = true; continue; }
                 kv.Value.Valid = false;
                 Rounds.Add(again);
                 L("extra " + kv.Key + " not confirmed");
@@ -826,6 +836,38 @@ namespace NetworkOverview.Core.Lltd
                 if (ok) return true;
                 IO.Send(Fr.Discover(Fr.TOS_TOPO, me, xidTopo, gen, ackTopo));
                 Pump(150);
+            }
+            return false;
+        }
+
+        static List<string> Only(List<string> a, List<string> keep)
+        {
+            List<string> r = new List<string>();
+            foreach (string x in a) if (keep.Contains(x)) r.Add(x);
+            return r;
+        }
+
+        // The responder learns a test address X (Train from X), then the mapper sends a probe to X.
+        // The probe is switched to the responder's port; it must appear in its sees-list.
+        bool CanObserve(string mac)
+        {
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                byte[] X = NextSpoof();
+                string xs = Fr.Str(X, 0);
+                List<EmitDesc> t = new List<EmitDesc>();
+                t.Add(new EmitDesc(0, 0, X, me));
+                t.Add(new EmitDesc(0, 5, X, me));
+                if (!EmitAcked(mac, t)) continue;
+                Pump(LearnPauseMs);
+                for (int i = 0; i < 2; i++) IO.Send(Fr.Build(Fr.TOS_TOPO, Fr.F_PROBE, X, me, X, me, 0, 0));
+                Pump(150);
+                bool ok;
+                foreach (string e in Query(mac, out ok))
+                {
+                    string[] p = e.Split('|');
+                    if (p[0] == meStr && p[1] == xs) return true;
+                }
             }
             return false;
         }
@@ -859,8 +901,9 @@ namespace NetworkOverview.Core.Lltd
             {
                 if (!r.Valid || r.DIsExtra) continue;
                 List<string> k = new List<string>();
+                if (!U.Contains(r.C) || !U.Contains(r.D)) continue;
                 k.Add(r.C); k.Add(r.D);
-                k.AddRange(r.AtC);
+                foreach (string a in r.AtC) if (U.Contains(a)) k.Add(a);
                 if (k.Count >= U.Count) continue;
                 string key = Key(k);
                 if (!clusters.ContainsKey(key)) clusters[key] = k;
@@ -912,8 +955,10 @@ namespace NetworkOverview.Core.Lltd
             foreach (RoundResult r in rounds)
             {
                 if (!r.Valid || !r.DIsExtra) continue;
+                if (!U.Contains(r.C)) continue;
                 List<string> k = new List<string>();
-                k.Add(r.C); k.AddRange(r.AtC);
+                k.Add(r.C);
+                foreach (string a in r.AtC) if (U.Contains(a)) k.Add(a);
                 List<string> cur;
                 if (!best.TryGetValue(r.D, out cur) || k.Count < cur.Count) best[r.D] = k;
             }

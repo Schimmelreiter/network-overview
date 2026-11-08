@@ -25,8 +25,10 @@ protocol.
   IP address and port link state; the switch found by LLTD is labelled accordingly.
 - **mDNS / DNS-SD (Bonjour, Avahi, Zeroconf)**: names, models and services, e.g. Cast devices,
   printers, AirPlay, Fire TV, ESPHome, HomeKit.
+- **SSDP / UPnP**: names and models from UPnP device descriptions (TVs, receivers, routers, newer
+  Netgear switches).
 - **Device types with their own symbols**: Echo Dot, Echo Spot, Echo Show, Fire TV, Google speakers
-  and displays, Chromecast, phones, tablets, printers, TVs, NAS, IoT devices. Detection uses mDNS,
+  and displays, Chromecast, phones, tablets, printers, TVs, NAS, heating controllers, IoT devices. Detection uses mDNS,
   the vendor part of the MAC address and, if nothing else helps, the device name.
 - Light and dark mode following Windows, languages German, English, Spanish and French.
 - Tooltips and details, context menu (web interface, shares, copy addresses), zoom
@@ -70,11 +72,23 @@ for *n* LLTD responders and *m* other devices. The progress is shown in the stat
 | Also place devices without LLTD | Places routers, printers, phones etc. into the structure (more tests). |
 | Query Netgear switches via NSDP | Broadcast query on UDP 63322/63324. |
 | Query mDNS/Zeroconf services | Multicast query on UDP 5353. |
+| Query UPnP devices via SSDP | Multicast query on UDP 1900, then the device descriptions via HTTP. |
 | Ping the whole subnet | Fills the ARP table before scanning (subnets up to /22). |
 | Maximum duration | Time limit for the topology tests. |
 | Language | Windows default, German, English, Spanish or French. |
 
 Settings are stored in `%APPDATA%\NetworkOverview\config.json`.
+
+Problems found during a scan (no valid IPv4 address, OpenWrt devices unreachable, LLTD responders that
+cannot receive test frames, …) are shown in a bar above the map; details are in the scan log.
+
+### Netgear switches
+
+ProSAFE Plus / Smart Managed Plus switches answer NSDP only if their management mode allows the
+Plus Utility. Newer firmware (e.g. GS308E V1.00.05 and later) defaults to *Web browser only*; switch
+it to *Web browser and Plus Utility* under *System → Management → Switch Management Mode* to get name
+and port status. Without NSDP, Netgear switches are still recognized by the vendor part of their MAC
+address or via UPnP and placed by the LLTD tests.
 
 ### SSH key for OpenWrt
 

@@ -38,6 +38,7 @@ public static class DeviceIcons
             case DeviceType.GoogleDevice: Pebble(g, x, y, t); break;
             case DeviceType.GoogleDisplay: StandDisplay(g, x, y, t); break;
             case DeviceType.Chromecast: Disc(g, x, y, t); break;
+            case DeviceType.HeatingController: Thermostat(g, x, y, t); break;
             default: Monitor(g, x, y, grey, !n.Lltd && !n.IsSelf && n.Name.Length == 0, t); break;
         }
         if (n.Wireless) Bars(g, x, y, t);
@@ -326,6 +327,22 @@ public static class DeviceIcons
         }
         using var br = new LinearGradientBrush(R(x - 20, y - 17, 40, 23), t.Screen1, t.Screen2, LinearGradientMode.ForwardDiagonal);
         g.FillPolygon(br, new[] { new PointF(x - 19, y - 17), new PointF(x + 19, y - 17), new PointF(x + 20.5f, y + 6), new PointF(x - 20.5f, y + 6) });
+    }
+
+    /// <summary>Wall-mounted room controller with a round display and a flame (generic heating controller).</summary>
+    public static void Thermostat(Graphics g, float x, float y, Theme t)
+    {
+        Box(g, R(x - 19, y - 21, 38, 40), 6, Color.White, Color.FromArgb(222, 222, 222), t);
+        var ring = R(x - 13, y - 15, 26, 26);
+        using (var dark = new SolidBrush(Color.FromArgb(45, 45, 50))) g.FillEllipse(dark, ring);
+        using (var arc = new Pen(Color.FromArgb(240, 130, 30), 3)) g.DrawArc(arc, R(x - 11, y - 13, 22, 22), 135, 200);
+        // small flame in the centre
+        using var flame = new GraphicsPath();
+        flame.AddBezier(x, y - 8, x + 6, y - 2, x + 5, y + 4, x, y + 5);
+        flame.AddBezier(x, y + 5, x - 5, y + 4, x - 6, y - 2, x, y - 8);
+        using (var fb = new SolidBrush(Color.FromArgb(255, 160, 40))) g.FillPath(fb, flame);
+        using var dot = new SolidBrush(Color.FromArgb(150, 150, 150));
+        g.FillEllipse(dot, R(x - 2, y + 13, 4, 4));
     }
 
     /// <summary>Small round streaming dongle with cable (Chromecast style).</summary>

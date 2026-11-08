@@ -24,6 +24,7 @@ public sealed class MainForm : Form
     readonly SplitContainer split = new() { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal };
     readonly Panel scroll = new() { Dock = DockStyle.Fill, AutoScroll = true };
     readonly MapView map = new() { Location = Point.Empty };
+    readonly Label banner = new() { Dock = DockStyle.Top, AutoSize = false, Visible = false, Padding = new Padding(8, 6, 8, 6), TextAlign = ContentAlignment.MiddleLeft };
     readonly ListView list = new() { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HideSelection = false };
     readonly StatusStrip statusStrip = new();
     readonly ToolStripStatusLabel status = new() { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
@@ -52,6 +53,7 @@ public sealed class MainForm : Form
         statusStrip.Items.AddRange(new ToolStripItem[] { status, progress });
         scroll.Controls.Add(map);
         split.Panel1.Controls.Add(scroll);
+        split.Panel1.Controls.Add(banner);
         split.Panel2.Controls.Add(list);
         Controls.Add(split);
         Controls.Add(bar);
@@ -132,6 +134,8 @@ public sealed class MainForm : Form
         var t = Theme.Current();
         map.Theme = t;
         scroll.BackColor = t.Background;
+        banner.BackColor = t.Dark ? Color.FromArgb(77, 64, 20) : Color.FromArgb(255, 244, 206);
+        banner.ForeColor = t.Dark ? Color.FromArgb(250, 235, 190) : Color.FromArgb(90, 60, 0);
         map.BackColor = t.Background;
         map.Invalidate();
     }
@@ -174,6 +178,8 @@ public sealed class MainForm : Form
             var r = await scan.RunAsync(ad, cfg, npcap, prog);
             result = r;
             lastLog = r.Log;
+            ShowWarnings(r.Warnings);
+            UpdateAdapter(r.Adapter);
             map.Result = r;
             FillList();
             status.Text = r.Status;
@@ -188,6 +194,25 @@ public sealed class MainForm : Form
             scan = null;
             SetBusy(false);
         }
+    }
+
+    void ShowWarnings(List<string> warnings)
+    {
+        banner.Text = string.Join(Environment.NewLine, warnings.Select(w => "⚠  " + w));
+        banner.Visible = warnings.Count > 0;
+        if (banner.Visible)
+        {
+            int lines = warnings.Sum(w => 1 + TextRenderer.MeasureText(w, banner.Font).Width / Math.Max(200, banner.Width - 40));
+            banner.Height = lines * banner.Font.Height + banner.Padding.Vertical + 4;
+        }
+    }
+
+    void UpdateAdapter(AdapterInfo fresh)
+    {
+        int i = adapters.FindIndex(a => a.Id == fresh.Id);
+        if (i < 0 || fresh.Id.Length == 0) return;
+        adapters[i] = fresh;
+        if (i < cbAdapter.Items.Count && (string)cbAdapter.Items[i]! != fresh.ToString()) cbAdapter.Items[i] = fresh.ToString();
     }
 
     void SetBusy(bool busy)

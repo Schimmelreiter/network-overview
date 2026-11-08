@@ -25,8 +25,11 @@ ermittelt die Switch-Struktur mit demselben Verfahren wie Windows 7: dem Protoko
   IP-Adresse und Link-Status der Ports; der per LLTD gefundene Switch wird entsprechend benannt.
 - **mDNS / DNS-SD (Bonjour, Avahi, Zeroconf)**: Namen, Modelle und Dienste, z. B. Cast-Geräte,
   Drucker, AirPlay, Fire TV, ESPHome, HomeKit.
+- **SSDP / UPnP**: Namen und Modelle aus UPnP-Gerätebeschreibungen (Fernseher, Receiver, Router,
+  neuere Netgear-Switches).
 - **Gerätetypen mit eigenen Symbolen**: Echo Dot, Echo Spot, Echo Show, Fire TV, Google-Lautsprecher
-  und -Displays, Chromecast, Smartphones, Tablets, Drucker, Fernseher, NAS, IoT-Geräte. Erkannt wird
+  und -Displays, Chromecast, Smartphones, Tablets, Drucker, Fernseher, NAS, Heizungsregler,
+  IoT-Geräte. Erkannt wird
   über mDNS, den Herstellerteil der MAC-Adresse und, wenn sonst nichts hilft, den Gerätenamen.
 - Hell- und Dunkelmodus nach Windows-Einstellung, Sprachen Deutsch, Englisch, Spanisch und
   Französisch.
@@ -72,11 +75,24 @@ dauert wenige Sekunden bis mehrere Minuten – grob *n²/2 + n·m* Tests zu je e
 | Geräte ohne LLTD ebenfalls einordnen | Ordnet Router, Drucker, Handys usw. in die Struktur ein (mehr Tests). |
 | Netgear-Switches per NSDP abfragen | Broadcast-Abfrage auf UDP 63322/63324. |
 | mDNS/Zeroconf-Dienste abfragen | Multicast-Abfrage auf UDP 5353. |
+| UPnP-Geräte per SSDP abfragen | Multicast-Abfrage auf UDP 1900, danach die Gerätebeschreibungen per HTTP. |
 | Ganzes Subnetz anpingen | Füllt vor dem Scan die ARP-Tabelle (Subnetze bis /22). |
 | Höchstdauer | Zeitlimit für die Topologietests. |
 | Sprache | Wie Windows, Deutsch, Englisch, Spanisch oder Französisch. |
 
 Die Einstellungen liegen in `%APPDATA%\NetworkOverview\config.json`.
+
+Probleme während eines Scans (keine gültige IPv4-Adresse, OpenWrt-Geräte nicht erreichbar,
+LLTD-Responder, die keine Testrahmen empfangen, …) erscheinen in einem Hinweisbalken über der Karte;
+Einzelheiten stehen im Protokoll.
+
+### Netgear-Switches
+
+ProSAFE-Plus- bzw. Smart-Managed-Plus-Switches antworten nur auf NSDP, wenn ihr Verwaltungsmodus das
+Plus Utility erlaubt. Neuere Firmware (z. B. GS308E ab V1.00.05) stellt standardmäßig *Web browser
+only* ein; unter *System → Management → Switch Management Mode* auf *Web browser and Plus Utility*
+umstellen, dann liefert der Switch Name und Port-Status. Ohne NSDP werden Netgear-Switches trotzdem
+über den Herstellerteil ihrer MAC-Adresse oder per UPnP erkannt und durch die LLTD-Tests eingeordnet.
 
 ### SSH-Schlüssel für OpenWrt
 

@@ -16,12 +16,16 @@ var tests = new List<(string Name, Action Body)>
     ("Topology: lossless, wired mapper", () => TopologyTests.Run(0.0, true, 1)),
     ("Topology: 3% loss per hop", () => TopologyTests.Run(0.03, true, 2)),
     ("Topology: wireless mapper uses wired root", () => TopologyTests.Run(0.0, false, 3)),
+    ("Topology: responder that cannot observe is not used as observer", TopologyTests.DeafResponder),
     ("Model + layout: merge sources, no crossings", ModelTests.MergeAndLayout),
     ("Layout: wireless group below wired switch (issue screenshot)", ModelTests.WirelessBelowWired),
     ("mDNS: build and parse packets", MiscTests.MdnsRoundTrip),
     ("OpenWrt: parse script output", MiscTests.OpenWrtParse),
     ("Device classifier", MiscTests.Classifier),
     ("Vendor database", MiscTests.Vendors),
+    ("SSDP: headers and device description", MiscTests.SsdpParse),
+    ("NSDP: response parsing", MiscTests.NsdpParse),
+    ("mDNS model hints", MiscTests.MdnsModels),
     ("Localization complete", MiscTests.Localization),
 };
 
@@ -52,7 +56,7 @@ sealed class TestNet
     public Dictionary<string, SimNode> H = new();
     public SimNode R, U, N1, N2, AP;
 
-    public TestNet(double loss, bool mapperWired, int seed)
+    public TestNet(double loss, bool mapperWired, int seed, params string[] deaf)
     {
         Net.Loss = loss;
         Net.Rnd = new Random(seed);
@@ -73,6 +77,7 @@ sealed class TestNet
         Add("apl1", "02:00:00:00:00:51", true, AP);
         Add("w1", "02:00:00:00:00:61", true, AP, true);
         Add("w2", "02:00:00:00:00:62", false, AP, true);
+        foreach (var d in deaf) H[d].Deaf = true;
         // let every device talk once so that the switches know it
         double l = Net.Loss; Net.Loss = 0;
         foreach (var h in H.Values) Net.Send(h, Fr.Build(0, Fr.F_TRAIN, Fr.Bcast, Fr.Mac(h.Mac), Fr.Bcast, Fr.Mac(h.Mac), 0, 0));
@@ -109,7 +114,7 @@ sealed class TestNet
     }
 }
 
-static class TopologyTests
+static partial class TopologyTests
 {
     public static void Run(double loss, bool wired, int seed)
     {
@@ -122,6 +127,21 @@ static class TopologyTests
             ? "{apl1,w1}\n  APcpu\n  apl1\n  w1\n{n1a,n1b,r1}\n  {n1a,n1b}\n    N1mgmt\n    n1a\n    n1b\n  GW\n  r1\n{n2a}\n  N2mgmt\n  n2a\nM\nu1\nu2\nu3\n"
             : "{apl1,n2a,u1,u2,w1}\n  {apl1,w1}\n    APcpu\n    apl1\n    w1\n  {n2a}\n    N2mgmt\n    n2a\n  u1\n  u2\n  u3\n{n1a,n1b}\n  N1mgmt\n  n1a\n  n1b\nGW\nr1\n";
         Assert.Equal(expected, d, "tree");
+    }
+}
+
+static partial class TopologyTests
+{
+    public static void DeafResponder()
+    {
+        var t = new TestNet(0.0, true, 4, "u2");
+        var job = t.Map(true);
+        Assert.True(job.NonObservers.Contains(t.Mac("u2")), "u2 detected as non-observer");
+        Assert.True(!job.Rounds.Any(r => r.C == t.Mac("u2")), "u2 never used as observer");
+        Assert.True(job.Rounds.All(r => r.Valid || r.Confirmed || r.DIsExtra), "no invalid responder rounds: " +
+            string.Join("; ", job.Rounds.Where(r => !r.Valid).Select(r => r.C + "/" + r.D)));
+        string expected = "{apl1,w1}\n  APcpu\n  apl1\n  w1\n{n1a,n1b,r1}\n  {n1a,n1b}\n    N1mgmt\n    n1a\n    n1b\n  GW\n  r1\n{n2a}\n  N2mgmt\n  n2a\nM\nu1\nu2\nu3\n";
+        Assert.Equal(expected, t.Describe(job.Tree), "tree with deaf responder");
     }
 }
 
@@ -313,15 +333,97 @@ static class MiscTests
         C(DeviceType.Phone, "", "S24-Ultra-von-Hauke");
         C(DeviceType.Phone, "", "A30s-von-Beate");
         C(DeviceType.Phone, "", "Note20-Ultra-von-Silvia");
-        C(DeviceType.Iot, "Espressif Inc.", "ems-esp");
+        C(DeviceType.HeatingController, "Espressif Inc.", "ems-esp");
+        C(DeviceType.HeatingController, "ROBERT BOSCH GmbH", "Buderus");
+        C(DeviceType.HeatingController, "", "TC100-Wohnzimmer");
+        C(DeviceType.Iot, "Espressif Inc.", "shelly-plug");
+        C(DeviceType.Tv, "LG Electronics", "LGwebOSTV");
+        C(DeviceType.MediaPlayer, "", "Yamaha");
         C(DeviceType.Printer, "Brother Industries, LTD.", "BRW123");
         C(DeviceType.Computer, "", "QUATTRO");
     }
 
     public static void Vendors()
     {
+        Assert.Equal("ROBERT BOSCH GmbH", VendorDb.Lookup("00:60:34:34:15:89"), "Bosch (entry with aligned columns)");
+        Assert.Equal("Netgear", VendorDb.Lookup("bc:a5:11:35:49:fb"), "Netgear GS308E");
+        Assert.True(VendorDb.Lookup("00:17:32:00:00:01").Contains("\"RISSA\""), "escaped quotes");
         Assert.True(VendorDb.Lookup("00:71:47:12:34:56").Contains("Amazon"), "Amazon OUI");
         Assert.Equal("", VendorDb.Lookup("02:71:47:12:34:56"), "randomized MAC has no vendor");
+    }
+
+    public static void SsdpParse()
+    {
+        var h = Ssdp.ParseHeaders("HTTP/1.1 200 OK\r\nCACHE-CONTROL: max-age=1800\r\nLOCATION: http://192.168.75.30:80/desc.xml\r\nST: upnp:rootdevice\r\n\r\n");
+        Assert.Equal("http://192.168.75.30:80/desc.xml", h["location"], "location header");
+        var d = new SsdpDevice();
+        Ssdp.ParseDescription("""
+            <?xml version="1.0"?>
+            <root xmlns="urn:schemas-upnp-org:device-1-0"><specVersion><major>1</major></specVersion>
+              <device><deviceType>urn:schemas-upnp-org:device:Basic:1</deviceType><friendlyName>Switch-Router</friendlyName>
+                <manufacturer>NETGEAR</manufacturer><modelName>GS308E</modelName><modelNumber>GS308E</modelNumber></device></root>
+            """, d);
+        Assert.Equal("Switch-Router", d.FriendlyName, "friendly name");
+        Assert.Equal("GS308E", d.Model, "model without duplicate number");
+        Assert.Equal("NETGEAR", d.Manufacturer, "manufacturer");
+    }
+
+    public static void NsdpParse()
+    {
+        var found = new Dictionary<string, NsdpDevice>();
+        var r = new List<byte> { 0x01, 0x02, 0, 0, 0, 0, 0, 0 };
+        r.AddRange(new byte[] { 0xd8, 0x43, 0xae, 0x43, 0x15, 0x1a });   // host
+        r.AddRange(new byte[] { 0x38, 0x94, 0xed, 0x2f, 0x07, 0x7d });   // device
+        r.AddRange(new byte[] { 0, 0, 0, 1 });
+        r.AddRange(Encoding.ASCII.GetBytes("NSDP"));
+        r.AddRange(new byte[4]);
+        void Tlv(int t, byte[] v) { r.Add((byte)(t >> 8)); r.Add((byte)t); r.Add((byte)(v.Length >> 8)); r.Add((byte)v.Length); r.AddRange(v); }
+        Tlv(0x0001, Encoding.ASCII.GetBytes("GS116Ev2"));
+        Tlv(0x0003, Encoding.ASCII.GetBytes("Switch-Recv"));
+        Tlv(0x0006, new byte[] { 192, 168, 75, 3 });
+        Tlv(0x0C00, new byte[] { 1, 5, 0 });
+        Tlv(0x0C00, new byte[] { 2, 0, 0 });
+        r.AddRange(new byte[] { 0xFF, 0xFF, 0, 0 });
+        Assert.Equal("38:94:ed:2f:07:7d", Nsdp.ParseResponse(r.ToArray(), found), "device MAC");
+        var d = found["38:94:ed:2f:07:7d"];
+        Assert.Equal("GS116Ev2", d.Model, "model");
+        Assert.Equal("Switch-Recv", d.Name, "name");
+        Assert.Equal("192.168.75.3", d.IPv4, "ip");
+        Assert.Equal("1:1G 2:-", string.Join(" ", d.Ports), "ports");
+        var req = Nsdp.BuildReadRequest(new byte[6], new byte[6], new ushort[] { 0x0001 });
+        Assert.Equal("NSDP", Encoding.ASCII.GetString(req, 24, 4), "signature");
+    }
+
+    public static void MdnsModels()
+    {
+        MdnsHost H(string ip, string host, params (string Type, string Txt)[] svc)
+        {
+            var h = new MdnsHost { IPv4 = ip, HostName = host };
+            foreach (var (type, txt) in svc)
+            {
+                var s = new MdnsService { Type = type + ".local", Instance = "x." + type + ".local" };
+                foreach (var kv in txt.Split(';', StringSplitOptions.RemoveEmptyEntries)) { var p = kv.Split('='); s.Txt[p[0]] = p.Length > 1 ? p[1] : ""; }
+                h.Services.Add(s);
+            }
+            return h;
+        }
+        var samba = H("192.168.75.11", "abc.local", ("_smb._tcp", ""), ("_device-info._tcp", "model=MacSamba"), ("_home-assistant._tcp", ""));
+        Assert.Equal("Home Assistant", samba.Model(), "MacSamba ignored, Home Assistant shown");
+        var yamaha = H("192.168.75.24", "Yamaha.local", ("_raop._tcp", "md=0,1,2"), ("_spotify-connect._tcp", ""));
+        Assert.Equal(null, yamaha.Model(), "AirPlay md is not a model");
+        Assert.Equal(DeviceType.MediaPlayer, DeviceClassifier.Classify("", "Yamaha", yamaha, false), "Yamaha");
+        var lg = H("192.168.75.20", "LGwebOSTV.local", ("_hap._tcp", ""), ("_airplay._tcp", "model=WEBOS"));
+        Assert.Equal(DeviceType.Tv, DeviceClassifier.Classify("", "", lg, false), "LG TV with HomeKit");
+        var echo = H("192.168.75.28", "Android-2.local", ("_spotify-connect._tcp", ""), ("_matter._tcp", ""));
+        Assert.Equal(DeviceType.EchoDot, DeviceClassifier.Classify("", "", echo, false), "Echo via Spotify+Matter");
+        var none = H("192.168.75.230", "none.local", ("_spotify-connect._tcp", ""), ("_matter._tcp", ""));
+        Assert.Equal(DeviceType.EchoDot, DeviceClassifier.Classify("Amazon Technologies Inc.", "", none, false), "Echo none.local");
+        var pilot = H("192.168.75.243", "HomePilot.local", ("_homepilot._tcp", ""));
+        Assert.Equal(DeviceType.Iot, DeviceClassifier.Classify("", "", pilot, false), "HomePilot");
+        var matter = H("192.168.75.238", "446A58E6BC0C.local", ("_matter._tcp", ""));
+        Assert.Equal(DeviceType.Iot, DeviceClassifier.Classify("", "", matter, false), "Matter device");
+        var ha = H("192.168.75.10", "himbeere.local", ("_smb._tcp", ""), ("_home-assistant._tcp", ""), ("_matter._tcp", ""));
+        Assert.Equal(DeviceType.Computer, DeviceClassifier.Classify("Raspberry Pi Trading Ltd", "himbeere", ha, false), "Home Assistant host");
     }
 
     public static void Localization()
