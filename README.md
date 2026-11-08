@@ -122,7 +122,8 @@ Requires the .NET 10 SDK. The core library and the tests (including a simulated 
 learning switches and LLTD responders) also build and run on Linux; the Windows Forms application
 is built on Windows.
 
-Releases are built by GitHub Actions when a tag `v*` is pushed:
+Releases are built by GitHub Actions – either push a tag `v*` or start the workflow
+*Actions → Release → Run workflow* with a version number (the tag is created automatically):
 
 ```
 git tag v1.0.0
