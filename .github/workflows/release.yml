@@ -1,0 +1,66 @@
+name: Release
+
+# Creates a GitHub release with ready-to-run executables when a version tag is pushed:
+#   git tag v1.2.3 && git push origin v1.2.3
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to (re)build, e.g. v1.2.3'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Test
+        run: dotnet run --project tests/NetworkOverview.Tests -c Release
+
+      - name: Publish
+        shell: pwsh
+        run: |
+          $version = $env:TAG.TrimStart('v')
+          New-Item -ItemType Directory -Force dist | Out-Null
+          foreach ($rid in 'win-x64', 'win-arm64') {
+            # self-contained: runs without an installed .NET runtime
+            dotnet publish src/NetworkOverview/NetworkOverview.csproj -c Release -r $rid --self-contained true `
+              -p:Version=$version -p:EnableCompressionInSingleFile=true -o "out/$rid-sc"
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            Copy-Item "out/$rid-sc/NetworkOverview.exe" "dist/NetworkOverview-$version-$rid.exe"
+            # framework-dependent: small, needs the .NET 10 Desktop Runtime
+            dotnet publish src/NetworkOverview/NetworkOverview.csproj -c Release -r $rid --self-contained false `
+              -p:Version=$version -o "out/$rid-fd"
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            Copy-Item "out/$rid-fd/NetworkOverview.exe" "dist/NetworkOverview-$version-$rid-framework-dependent.exe"
+          }
+          Get-ChildItem dist | ForEach-Object { (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower() + "  " + $_.Name } |
+            Set-Content dist/SHA256SUMS.txt
+
+      - name: Create release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = $env:TAG.TrimStart('v')
+          gh release view $env:TAG 2>$null
+          if ($LASTEXITCODE -eq 0) { gh release upload $env:TAG (Get-ChildItem dist).FullName --clobber }
+          else {
+            $flags = @('--title', "Network Overview $version", '--generate-notes')
+            if ($version.StartsWith('0.') -or $version.Contains('-')) { $flags += '--prerelease' }
+            gh release create $env:TAG (Get-ChildItem dist).FullName @flags
+          }

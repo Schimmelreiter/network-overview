@@ -1,0 +1,46 @@
+name: Build
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        run: dotnet build NetworkOverview.slnx -c Release
+
+      - name: Test
+        run: dotnet run --project tests/NetworkOverview.Tests -c Release --no-build
+
+      - name: Publish (framework-dependent, win-x64)
+        run: dotnet publish src/NetworkOverview/NetworkOverview.csproj -c Release -r win-x64 --self-contained false -p:Version=0.0.0-ci.${{ github.run_number }} -o publish/win-x64
+
+      - name: Render example map
+        shell: pwsh
+        run: |
+          Start-Process -Wait -FilePath publish/win-x64/NetworkOverview.exe -ArgumentList '--render-demo', "$PWD/demo-light.png", "$PWD/demo-dark.png"
+          if (-not (Test-Path demo-light.png)) { throw 'demo rendering failed' }
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: example-map
+          path: demo-*.png
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: NetworkOverview-win-x64
+          path: publish/win-x64/NetworkOverview.exe
+          if-no-files-found: error
