@@ -28,6 +28,17 @@ jobs:
       - name: Publish (framework-dependent, win-x64)
         run: dotnet publish src/NetworkOverview/NetworkOverview.csproj -c Release -r win-x64 --self-contained false -p:Version=0.0.0-ci.${{ github.run_number }} -o publish/win-x64
 
+      - name: Render example map
+        shell: pwsh
+        run: |
+          Start-Process -Wait -FilePath publish/win-x64/NetworkOverview.exe -ArgumentList '--render-demo', "$PWD/demo-light.png", "$PWD/demo-dark.png"
+          if (-not (Test-Path demo-light.png)) { throw 'demo rendering failed' }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: example-map
+          path: demo-*.png
+
       - uses: actions/upload-artifact@v4
         with:
           name: NetworkOverview-win-x64
