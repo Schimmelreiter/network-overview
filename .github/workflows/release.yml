@@ -58,5 +58,9 @@ jobs:
         run: |
           $version = $env:TAG.TrimStart('v')
           gh release view $env:TAG 2>$null
-          if ($LASTEXITCODE -eq 0) { gh release upload $env:TAG dist/* --clobber }
-          else { gh release create $env:TAG dist/* --title "Network Overview $version" --generate-notes }
+          if ($LASTEXITCODE -eq 0) { gh release upload $env:TAG (Get-ChildItem dist).FullName --clobber }
+          else {
+            $flags = @('--title', "Network Overview $version", '--generate-notes')
+            if ($version.StartsWith('0.') -or $version.Contains('-')) { $flags += '--prerelease' }
+            gh release create $env:TAG (Get-ChildItem dist).FullName @flags
+          }
