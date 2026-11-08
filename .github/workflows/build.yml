@@ -33,6 +33,11 @@ jobs:
         run: |
           Start-Process -Wait -FilePath publish/win-x64/NetworkOverview.exe -ArgumentList '--render-demo', "$PWD/demo-light.png", "$PWD/demo-dark.png"
           if (-not (Test-Path demo-light.png)) { throw 'demo rendering failed' }
+          # TEMP: dump images into the log for visual review
+          foreach ($f in 'demo-light.png', 'demo-dark.png') {
+            $b = [Convert]::ToBase64String([IO.File]::ReadAllBytes("$PWD/$f"))
+            for ($i = 0; $i -lt $b.Length; $i += 4000) { Write-Output ("B64:$f:" + $b.Substring($i, [Math]::Min(4000, $b.Length - $i))) }
+          }
 
       - uses: actions/upload-artifact@v4
         with:
