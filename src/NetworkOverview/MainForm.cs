@@ -38,6 +38,7 @@ public sealed class MainForm : Form
     List<string> lastLog = new();
     Node? ctxNode;
     bool npcap;
+    bool initializing = true;
     int sortColumn = -1;
     bool sortDescending;
 
@@ -68,7 +69,7 @@ public sealed class MainForm : Form
         btnZoomOut.Click += (_, _) => map.Zoom /= 1.2f;
         cbAdapter.SelectedIndexChanged += (_, _) =>
         {
-            if (cbAdapter.SelectedIndex < 0 || !IsHandleCreated || scan != null) return;
+            if (cbAdapter.SelectedIndex < 0 || initializing || scan != null) return;
             cfg.Adapter = adapters[cbAdapter.SelectedIndex].Name;
             cfg.Save();
             _ = StartScan();
@@ -108,9 +109,11 @@ public sealed class MainForm : Form
             MessageBox.Show(this, L.T("NoAdapter"), Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
+        // check Npcap before the first scan; selecting the adapter must not start a scan during start-up
+        npcap = PcapIO.IsAvailable();
         int sel = Math.Max(0, adapters.FindIndex(a => a.Name == cfg.Adapter));
         cbAdapter.SelectedIndex = sel;
-        npcap = PcapIO.IsAvailable();
+        initializing = false;
         if (!npcap && MessageBox.Show(this, L.T("NpcapMissingDialog"), Text, MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
             Open("https://npcap.com/#download");
         _ = StartScan();
