@@ -36,7 +36,7 @@ jobs:
           # TEMP: dump images into the log for visual review
           foreach ($f in 'demo-light.png', 'demo-dark.png') {
             $b = [Convert]::ToBase64String([IO.File]::ReadAllBytes("$PWD/$f"))
-            for ($i = 0; $i -lt $b.Length; $i += 4000) { Write-Output ("B64:$f:" + $b.Substring($i, [Math]::Min(4000, $b.Length - $i))) }
+            for ($i = 0; $i -lt $b.Length; $i += 4000) { Write-Output ("B64:${f}:" + $b.Substring($i, [Math]::Min(4000, $b.Length - $i))) }
           }
 
       - uses: actions/upload-artifact@v4
