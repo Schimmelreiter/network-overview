@@ -32,6 +32,7 @@ public static class NodeText
         if (n.Signal.Length > 0) l.Add(L.T("Signal", n.Signal));
         if (n.Ports.Length > 0) l.Add(L.T("Ports", n.Ports));
         foreach (var s in n.SeenAt) l.Add(L.T("SeenAt", s));
+        foreach (var s in n.Notes) l.Add("⚠ " + s);
         if (n.MdnsServices.Count > 0) l.Add(L.T("Services", string.Join(", ", n.MdnsServices)));
         var p = m.ParentOf(n);
         if (p != null) l.Add(L.T("ConnectedTo", p.Title));

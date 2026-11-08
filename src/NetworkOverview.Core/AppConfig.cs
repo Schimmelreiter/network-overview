@@ -9,6 +9,7 @@ public sealed class AppConfig
     public bool PlaceOthers { get; set; } = true;
     public bool Nsdp { get; set; } = true;
     public bool Mdns { get; set; } = true;
+    public bool Ssdp { get; set; } = true;
     public bool PingSweep { get; set; }
     public int MaxMinutes { get; set; } = 10;
     public string Adapter { get; set; } = "";

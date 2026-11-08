@@ -1,106 +1,143 @@
-#nullable disable
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using NetworkOverview.Core.Lltd;
 
-// NSDP (Netgear Switch Discovery Protocol) as used by ProSAFE Plus / Smart switches.
-namespace NetworkOverview.Core.Discovery
+namespace NetworkOverview.Core.Discovery;
+
+public sealed class NsdpDevice
 {
-    public class NsdpDevice
+    public string Mac { get; set; } = "";
+    public string Model { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string IPv4 { get; set; } = "";
+    public string Firmware { get; set; } = "";
+    public List<string> Ports { get; } = new();
+}
+
+/// <summary>NSDP (Netgear Switch Discovery Protocol) as used by ProSAFE Plus / Smart Managed Plus switches.
+/// Newer firmware can switch this off ("Switch Management Mode: Web browser only").</summary>
+public static class Nsdp
+{
+    const ushort TlvModel = 0x0001, TlvName = 0x0003, TlvMac = 0x0004, TlvIp = 0x0006, TlvFirmware = 0x000D, TlvPortStatus = 0x0C00;
+    static int sequence = Random.Shared.Next(1, 0x7FFF);
+
+    static string Speed(int code) => code switch
     {
-        public string Mac = "";
-        public string Model = "";
-        public string Name = "";
-        public string IPv4 = "";
-        public string Firmware = "";
-        public List<string> Ports = new List<string>();
+        0 => "-",
+        1 => "10M/H",
+        2 => "10M",
+        3 => "100M/H",
+        4 => "100M",
+        5 => "1G",
+        6 => "2.5G",
+        7 => "10G",
+        _ => "?" + code,
+    };
+
+    public static byte[] BuildReadRequest(byte[] hostMac, byte[] deviceMac, IEnumerable<ushort> tlvs)
+    {
+        var m = new List<byte> { 0x01, 0x01 };                // version 1, read request
+        m.AddRange(new byte[6]);                              // result + reserved
+        m.AddRange(hostMac);
+        m.AddRange(deviceMac);                                // 00:00:00:00:00:00 = all devices
+        m.AddRange(new byte[2]);
+        int seq = Interlocked.Increment(ref sequence) & 0xFFFF;
+        m.Add((byte)(seq >> 8)); m.Add((byte)seq);
+        m.AddRange(Encoding.ASCII.GetBytes("NSDP"));
+        m.AddRange(new byte[4]);
+        foreach (var t in tlvs) { m.Add((byte)(t >> 8)); m.Add((byte)t); m.Add(0); m.Add(0); }
+        m.Add(0xFF); m.Add(0xFF); m.Add(0); m.Add(0);
+        return m.ToArray();
     }
 
-    public static class Nsdp
+    /// <summary>Merges a read response into <paramref name="found"/>. Returns the device MAC or null.</summary>
+    public static string? ParseResponse(byte[] r, Dictionary<string, NsdpDevice> found)
     {
-        static string Speed(int code)
+        if (r.Length < 32 || r[1] != 0x02 || Encoding.ASCII.GetString(r, 24, 4) != "NSDP") return null;
+        string mac = MacUtil.Normalize(Convert.ToHexString(r, 14, 6));
+        var tlvs = new List<(int Type, byte[] Value)>();
+        int i = 32;
+        while (i + 4 <= r.Length)
         {
-            switch (code)
+            int t = (r[i] << 8) | r[i + 1];
+            int len = (r[i + 2] << 8) | r[i + 3];
+            i += 4;
+            if (t == 0xFFFF || i + len > r.Length) break;
+            tlvs.Add((t, r.AsSpan(i, len).ToArray()));
+            i += len;
+        }
+        var macTlv = tlvs.FirstOrDefault(x => x.Type == TlvMac && x.Value.Length == 6);
+        if (macTlv.Value != null) mac = MacUtil.Normalize(Convert.ToHexString(macTlv.Value));
+        if (!MacUtil.IsUsable(mac)) return null;
+        if (!found.TryGetValue(mac, out var d)) found[mac] = d = new NsdpDevice { Mac = mac };
+        bool portsInThisResponse = false;
+        foreach (var (t, v) in tlvs)
+        {
+            switch (t)
             {
-                case 0: return "-";
-                case 1: return "10M/H";
-                case 2: return "10M";
-                case 3: return "100M/H";
-                case 4: return "100M";
-                case 5: return "1G";
-                case 6: return "2.5G";
-                case 7: return "10G";
-                default: return "?" + code;
+                case TlvModel: d.Model = Encoding.ASCII.GetString(v).TrimEnd('\0', ' '); break;
+                case TlvName: d.Name = Encoding.ASCII.GetString(v).TrimEnd('\0', ' '); break;
+                case TlvIp: if (v.Length == 4) d.IPv4 = new IPAddress(v).ToString(); break;
+                case TlvFirmware: d.Firmware = Encoding.ASCII.GetString(v).TrimEnd('\0', ' '); break;
+                case TlvPortStatus:
+                    if (v.Length >= 2)
+                    {
+                        if (!portsInThisResponse) { d.Ports.Clear(); portsInThisResponse = true; }
+                        d.Ports.Add(v[0] + ":" + Speed(v[1]));
+                    }
+                    break;
             }
         }
+        return mac;
+    }
 
-        public static List<NsdpDevice> Discover(string localIp, string localMac, int timeoutMs)
+    public static List<NsdpDevice> Discover(string localIp, string localMac, int timeoutMs, Action<string>? log = null)
+    {
+        var found = new Dictionary<string, NsdpDevice>();
+        byte[] host = Convert.FromHexString(localMac.Replace(":", ""));
+        foreach (var (src, dst) in new[] { (63321, 63322), (63323, 63324) })
         {
-            Dictionary<string, NsdpDevice> found = new Dictionary<string, NsdpDevice>();
-            byte[] myMac = Fr.Mac(localMac);
-            int[][] ports = new int[][] { new int[] { 63321, 63322 }, new int[] { 63323, 63324 } };
-            foreach (int[] pp in ports)
+            UdpClient? u = null;
+            try
             {
-                UdpClient u = null;
-                try
+                u = new UdpClient();
+                u.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                u.Client.Bind(new IPEndPoint(IPAddress.Parse(localIp), src));
+                u.EnableBroadcast = true;
+                u.Client.ReceiveTimeout = 150;
+                var target = new IPEndPoint(IPAddress.Broadcast, dst);
+
+                // 1. discovery of all devices
+                var req = BuildReadRequest(host, new byte[6], new[] { TlvModel, TlvName, TlvMac, TlvIp, TlvFirmware });
+                u.Send(req, req.Length, target);
+                Receive(u, found, timeoutMs);
+
+                // 2. port status, addressed to each device (some firmware ignores it in the combined request)
+                foreach (var d in found.Values.ToList())
                 {
-                    u = new UdpClient();
-                    u.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-                    u.Client.Bind(new IPEndPoint(IPAddress.Parse(localIp), pp[0]));
-                    u.EnableBroadcast = true;
-                    u.Client.ReceiveTimeout = 200;
-                    List<byte> m = new List<byte>();
-                    m.Add(0x01); m.Add(0x01);                 // version, read request
-                    m.AddRange(new byte[6]);                  // result + unknown
-                    m.AddRange(myMac);                        // host MAC
-                    m.AddRange(new byte[6]);                  // device MAC (all)
-                    m.AddRange(new byte[2]);
-                    m.Add(0x00); m.Add(0x01);                 // sequence
-                    m.AddRange(Encoding.ASCII.GetBytes("NSDP"));
-                    m.AddRange(new byte[4]);
-                    int[] tlvs = { 0x0001, 0x0003, 0x0004, 0x0006, 0x000D, 0x0C00 };
-                    foreach (int t in tlvs) { m.Add((byte)(t >> 8)); m.Add((byte)t); m.Add(0); m.Add(0); }
-                    m.Add(0xFF); m.Add(0xFF); m.Add(0); m.Add(0);
-                    byte[] req = m.ToArray();
-                    u.Send(req, req.Length, new IPEndPoint(IPAddress.Broadcast, pp[1]));
-                    Stopwatch sw = Stopwatch.StartNew();
-                    while (sw.ElapsedMilliseconds < timeoutMs)
-                    {
-                        byte[] r;
-                        IPEndPoint ep = new IPEndPoint(IPAddress.Any, 0);
-                        try { r = u.Receive(ref ep); }
-                        catch (SocketException) { continue; }
-                        if (r.Length < 32 || r[1] != 0x02) continue;
-                        NsdpDevice d = new NsdpDevice();
-                        d.Mac = Fr.Str(r, 14);
-                        int i = 32;
-                        while (i + 4 <= r.Length)
-                        {
-                            int t = (r[i] << 8) | r[i + 1];
-                            int len = (r[i + 2] << 8) | r[i + 3];
-                            i += 4;
-                            if (t == 0xFFFF) break;
-                            if (i + len > r.Length) break;
-                            switch (t)
-                            {
-                                case 0x0001: d.Model = Encoding.ASCII.GetString(r, i, len).TrimEnd('\0', ' '); break;
-                                case 0x0003: d.Name = Encoding.ASCII.GetString(r, i, len).TrimEnd('\0', ' '); break;
-                                case 0x0004: if (len == 6) d.Mac = Fr.Str(r, i); break;
-                                case 0x0006: if (len == 4) d.IPv4 = new IPAddress(Fr.Sub(r, i, 4)).ToString(); break;
-                                case 0x000D: d.Firmware = Encoding.ASCII.GetString(r, i, len).TrimEnd('\0', ' '); break;
-                                case 0x0C00: if (len >= 2) d.Ports.Add(r[i] + ":" + Speed(r[i + 1])); break;
-                            }
-                            i += len;
-                        }
-                        if (d.Mac != "00:00:00:00:00:00") found[d.Mac] = d;
-                    }
+                    var p = BuildReadRequest(host, Convert.FromHexString(d.Mac.Replace(":", "")), new[] { TlvPortStatus });
+                    u.Send(p, p.Length, target);
                 }
-                catch { }
-                finally { if (u != null) u.Close(); }
+                if (found.Count > 0) Receive(u, found, 700);
             }
-            return new List<NsdpDevice>(found.Values);
+            catch (SocketException ex) { log?.Invoke($"NSDP {src}->{dst}: {ex.Message}"); }
+            finally { u?.Close(); }
+        }
+        return found.Values.ToList();
+    }
+
+    static void Receive(UdpClient u, Dictionary<string, NsdpDevice> found, int ms)
+    {
+        var sw = Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < ms)
+        {
+            try
+            {
+                var ep = new IPEndPoint(IPAddress.Any, 0);
+                ParseResponse(u.Receive(ref ep), found);
+            }
+            catch (SocketException) { }
         }
     }
 }

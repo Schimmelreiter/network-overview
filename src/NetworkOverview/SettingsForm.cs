@@ -8,7 +8,7 @@ public sealed class SettingsForm : Form
     readonly AppConfig cfg;
     readonly TextBox tbTargets = new() { Dock = DockStyle.Fill };
     readonly CheckBox cbTopology = new() { AutoSize = true }, cbOthers = new() { AutoSize = true }, cbNsdp = new() { AutoSize = true },
-                      cbMdns = new() { AutoSize = true }, cbPing = new() { AutoSize = true };
+                      cbMdns = new() { AutoSize = true }, cbSsdp = new() { AutoSize = true }, cbPing = new() { AutoSize = true };
     readonly NumericUpDown numMinutes = new() { Minimum = 1, Maximum = 120, Width = 70 };
     readonly ComboBox cbLanguage = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 180 };
     static readonly string[] LanguageCodes = { "system", "de", "en", "es", "fr" };
@@ -35,7 +35,7 @@ public sealed class SettingsForm : Form
         tbTargets.Margin = new Padding(3, 0, 3, 10);
         t.Controls.Add(tbTargets, 0, 1); t.SetColumnSpan(tbTargets, 2);
         int row = 2;
-        foreach (var (cb, key, value) in new[] { (cbTopology, "OptTopology", cfg.Topology), (cbOthers, "OptPlaceOthers", cfg.PlaceOthers), (cbNsdp, "OptNsdp", cfg.Nsdp), (cbMdns, "OptMdns", cfg.Mdns), (cbPing, "OptPing", cfg.PingSweep) })
+        foreach (var (cb, key, value) in new[] { (cbTopology, "OptTopology", cfg.Topology), (cbOthers, "OptPlaceOthers", cfg.PlaceOthers), (cbNsdp, "OptNsdp", cfg.Nsdp), (cbMdns, "OptMdns", cfg.Mdns), (cbSsdp, "OptSsdp", cfg.Ssdp), (cbPing, "OptPing", cfg.PingSweep) })
         {
             cb.Text = L.T(key); cb.Checked = value;
             t.Controls.Add(cb, 0, row); t.SetColumnSpan(cb, 2); row++;
@@ -69,6 +69,7 @@ public sealed class SettingsForm : Form
         cfg.PlaceOthers = cbOthers.Checked;
         cfg.Nsdp = cbNsdp.Checked;
         cfg.Mdns = cbMdns.Checked;
+        cfg.Ssdp = cbSsdp.Checked;
         cfg.PingSweep = cbPing.Checked;
         cfg.MaxMinutes = (int)numMinutes.Value;
         cfg.Language = LanguageCodes[Math.Max(0, cbLanguage.SelectedIndex)];

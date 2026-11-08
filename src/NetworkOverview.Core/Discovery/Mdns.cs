@@ -46,8 +46,29 @@ public sealed class MdnsHost
         return null;
     }
 
-    /// <summary>Model description from TXT records (Cast "md", device-info "model", AirPlay "model", IPP "ty").</summary>
-    public string? Model() => TxtValue("md") ?? TxtValue("ty") ?? TxtValue("model") ?? TxtValue("usb_MDL");
+    /// <summary>Model description from TXT records. "md" is only a model for Cast devices (AirPlay uses
+    /// it for metadata types), and Samba's default device-info model "MacSamba" says nothing.</summary>
+    public string? Model()
+    {
+        foreach (var s in Services)
+        {
+            string? v = null;
+            if (s.Type.StartsWith("_googlecast", StringComparison.OrdinalIgnoreCase)) s.Txt.TryGetValue("md", out v);
+            else if (s.Type.StartsWith("_ipp", StringComparison.OrdinalIgnoreCase) || s.Type.StartsWith("_printer", StringComparison.OrdinalIgnoreCase)
+                     || s.Type.StartsWith("_pdl", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!s.Txt.TryGetValue("ty", out v)) s.Txt.TryGetValue("usb_MDL", out v);
+            }
+            else if (s.Type.StartsWith("_device-info", StringComparison.OrdinalIgnoreCase)
+                     || s.Type.StartsWith("_airplay", StringComparison.OrdinalIgnoreCase))
+                s.Txt.TryGetValue("model", out v);
+            if (!string.IsNullOrWhiteSpace(v) && !IgnoredModels.Contains(v)) return v;
+        }
+        if (HasType("_home-assistant")) return "Home Assistant";
+        return null;
+    }
+
+    static readonly HashSet<string> IgnoredModels = new(StringComparer.OrdinalIgnoreCase) { "MacSamba", "Xserve", "RackMac" };
 }
 
 public sealed record DnsRecord(string Name, ushort Type, string Data, int Port, IReadOnlyList<string> Txt, string Source);

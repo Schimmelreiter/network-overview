@@ -41,6 +41,7 @@ public sealed class Node
     public string Tlvs { get; set; } = "";
     public List<string> SeenAt { get; } = new();
     public List<string> MdnsServices { get; } = new();
+    public List<string> Notes { get; } = new();
     public string? Parent { get; set; }
     public bool Dashed { get; set; }
     public bool IsSelf { get; set; }

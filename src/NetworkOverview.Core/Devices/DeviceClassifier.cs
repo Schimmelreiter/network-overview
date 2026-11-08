@@ -23,6 +23,7 @@ public enum DeviceType
     GoogleDisplay,
     Chromecast,
     GoogleDevice,
+    HeatingController,
 }
 
 /// <summary>Vendor lookup by MAC prefix (IEEE MA-L registry, embedded).</summary>
@@ -71,39 +72,42 @@ public static class DeviceClassifier
 {
     static bool Has(string? s, string pattern) => s != null && Regex.IsMatch(s, pattern, RegexOptions.IgnoreCase);
 
-    public static DeviceType Classify(string vendor, string? name, MdnsHost? mdns, bool lltdResponder)
+    public static DeviceType Classify(string vendor, string? name, MdnsHost? mdns, bool lltdResponder, string? upnpModel = null)
     {
         string names = string.Join(" ", new[] { name, mdns?.FriendlyName(), mdns?.HostName }.Where(s => !string.IsNullOrEmpty(s)));
-        string model = mdns?.Model() ?? "";
+        string model = string.Join(" ", new[] { mdns?.Model(), upnpModel }.Where(s => !string.IsNullOrEmpty(s)));
         bool amazon = Has(vendor, @"\bAmazon\b");
         bool google = Has(vendor, @"\bGoogle\b");
 
-        // --- strong evidence from mDNS ---
+        // --- strong evidence from mDNS service types ---
         if (mdns != null)
         {
             if (mdns.HasType("_googlecast"))
             {
-                if (Has(model, @"hub|display|nest\s*hub")) return DeviceType.GoogleDisplay;
-                if (Has(model, @"chromecast|google\s*tv|cast")) return DeviceType.Chromecast;
+                if (Has(model, @"hub|display")) return DeviceType.GoogleDisplay;
+                if (Has(model, @"chromecast|google\s*tv")) return DeviceType.Chromecast;
                 if (Has(model, @"mini|home|nest\s*audio|speaker")) return DeviceType.GoogleSpeaker;
-                if (google) return DeviceType.GoogleSpeaker;
-                return DeviceType.MediaPlayer;
+                if (Has(model, @"\bTV\b|bravia|webos")) return DeviceType.Tv;
+                return google ? DeviceType.GoogleSpeaker : DeviceType.MediaPlayer;
             }
             if (mdns.HasType("_amzn-wplay")) return DeviceType.FireTv;
             if (mdns.HasType("_ipp") || mdns.HasType("_printer") || mdns.HasType("_pdl-datastream")) return DeviceType.Printer;
-            if (mdns.HasType("_androidtvremote") || Has(model, @"\bTV\b")) return DeviceType.Tv;
-            if (mdns.HasType("_esphomelib") || mdns.HasType("_shelly") || mdns.HasType("_hap")) return DeviceType.Iot;
-            if (mdns.HasType("_sonos") || mdns.HasType("_spotify-connect") || mdns.HasType("_raop"))
-                return Has(model, @"iphone|ipad|mac") ? (Has(model, "ipad") ? DeviceType.Tablet : Has(model, "iphone") ? DeviceType.Phone : DeviceType.Computer) : DeviceType.MediaPlayer;
         }
 
+        // --- heating (Bosch/Buderus/Junkers and others); checked before generic IoT rules ---
+        if (Has(names, @"buderus|junkers|logamatic|easycontrol|\btc100|\bkm[23]00|\bmx300|ems[-_ ]?esp|vaillant|sensonet|viessmann|vitoconnect|wolf[-_ ]?link|heizung|thermostat|chaudi[eè]re|caldera"))
+            return DeviceType.HeatingController;
+
         // --- Amazon: vendor, then name to tell the models apart ---
-        if (amazon || Has(names, @"\b(echo|alexa|fire[-_ ]?tv|amazon)"))
+        // Echo speakers announce Spotify Connect + Matter with host names like "none.local" or "Android-2.local".
+        bool echoLike = mdns != null && mdns.HasType("_spotify-connect") && mdns.HasType("_matter")
+                        && Has(mdns.HostName, @"^(none|android)(-\d+)?\.local");
+        if (amazon || echoLike || Has(names, @"\b(echo|alexa|fire[-_ ]?tv|amazon)"))
         {
             if (Has(names, @"show")) return DeviceType.EchoShow;
             if (Has(names, @"spot")) return DeviceType.EchoSpot;
             if (Has(names, @"fire|aft[a-z]|stick")) return DeviceType.FireTv;
-            if (Has(names, @"echo|alexa|dot")) return DeviceType.EchoDot;
+            if (Has(names, @"echo|alexa|dot") || echoLike) return DeviceType.EchoDot;
             if (amazon) return DeviceType.AmazonDevice;
         }
 
@@ -116,6 +120,26 @@ public static class DeviceClassifier
             if (google && !Has(names, @"pixel")) return DeviceType.GoogleDevice;
         }
 
+        // --- TVs: after Amazon/Google (Fire TV), before HomeKit/AirPlay, which TVs announce as well ---
+        if (Has(names, @"webos|lgwebos|bravia|tizen|smart[-_ ]?tv|\btv\b|fernseher") || Has(model, @"webos|\btv\b|bravia|tizen")
+            || (mdns != null && mdns.HasType("_androidtvremote")))
+            return DeviceType.Tv;
+
+        // --- weaker mDNS hints ---
+        if (mdns != null)
+        {
+            if (mdns.HasType("_sonos") || mdns.HasType("_spotify-connect") || mdns.HasType("_raop") || mdns.HasType("_airplay"))
+            {
+                if (Has(model, "iphone")) return DeviceType.Phone;
+                if (Has(model, "ipad")) return DeviceType.Tablet;
+                if (Has(model, @"mac|imac")) return DeviceType.Computer;
+                return DeviceType.MediaPlayer;
+            }
+            if (mdns.HasType("_esphomelib") || mdns.HasType("_shelly") || mdns.HasType("_hap") || mdns.HasType("_homepilot")
+                || (mdns.HasType("_matter") && !mdns.HasType("_home-assistant") && !mdns.HasType("_smb")))
+                return DeviceType.Iot;
+        }
+
         // --- other well-known kinds ---
         if (Has(names, @"ipad|\btab\b|galaxy[-_ ]?tab|tablet|\bsm-t\d")) return DeviceType.Tablet;
         if (Has(names, @"iphone|pixel|galaxy|\bnote\s?\d|\bs\d{2}\b|\ba\d{2}s?\b|redmi|xiaomi|huawei|oneplus|android|motorola|\bmoto\b|smartphone|handy|phone"))
@@ -123,10 +147,9 @@ public static class DeviceClassifier
         if (Has(vendor, @"Hewlett Packard|HP Inc|Brother|Seiko Epson|Canon|Kyocera|Lexmark|Xerox|Ricoh") || Has(names, @"printer|drucker|imprimante|impresora|\bmfc|laserjet|officejet|deskjet"))
             return DeviceType.Printer;
         if (Has(vendor, @"Synology|QNAP|Western Digital|Buffalo") || Has(names, @"\bnas\b|diskstation|synology|qnap")) return DeviceType.Nas;
-        if (Has(vendor, @"Espressif|Shelly|Tuya|Allterco|Sonoff|Itead|Raspberry") || Has(names, @"esp|shelly|tasmota|sonoff|tuya|zigbee|homematic|\bems\b"))
+        if (Has(vendor, @"Espressif|Shelly|Tuya|Allterco|Sonoff|Itead") || Has(names, @"\besp|shelly|tasmota|sonoff|tuya|zigbee|homematic|homepilot"))
             return lltdResponder ? DeviceType.Computer : DeviceType.Iot;
-        if (Has(vendor, @"Sonos|Roku|Bose") || Has(names, @"sonos|roku|bose")) return DeviceType.MediaPlayer;
-        if (Has(names, @"\btv\b|fernseher|bravia|webos|tizen|smart[-_ ]?tv")) return DeviceType.Tv;
+        if (Has(vendor, @"Sonos|Roku|Bose|Yamaha|Denon|Harman") || Has(names, @"sonos|roku|bose|yamaha|denon")) return DeviceType.MediaPlayer;
         return DeviceType.Computer;
     }
 }

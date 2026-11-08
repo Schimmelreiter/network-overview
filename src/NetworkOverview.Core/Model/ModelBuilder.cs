@@ -15,6 +15,7 @@ public sealed class ScanData
     public List<OpenWrtInfo> OpenWrt { get; init; } = new();
     public List<NsdpDevice> Nsdp { get; init; } = new();
     public List<MdnsHost> Mdns { get; init; } = new();
+    public List<SsdpDevice> Ssdp { get; init; } = new();
     public WlanInfo? Wlan { get; init; }
     public List<LltdHost> LltdHosts { get; init; } = new();
     public List<TNode> Tree { get; init; } = new();
@@ -149,17 +150,40 @@ public static class ModelBuilder
             }
         }
         var mdnsByIp = d.Mdns.GroupBy(h => h.IPv4).ToDictionary(g => g.Key, g => g.First());
+        var ssdpByIp = d.Ssdp.Where(x => x.IPv4.Length > 0).GroupBy(x => x.IPv4).ToDictionary(g => g.Key, g => g.First());
         foreach (var n in m.All)
         {
+            if (n.Mac.Length > 0) n.Vendor = VendorDb.Lookup(n.Mac);
             if (n.IPv4.Length > 0 && mdnsByIp.TryGetValue(n.IPv4, out var mh))
             {
                 if (n.Name.Length == 0) n.Name = mh.FriendlyName() ?? "";
                 if (n.Model.Length == 0) n.Model = mh.Model() ?? "";
                 n.MdnsServices.AddRange(mh.Services.Select(s => s.Type.Replace(".local", "")).Distinct());
             }
+            if (n.IPv4.Length > 0 && ssdpByIp.TryGetValue(n.IPv4, out var sd))
+            {
+                if (n.Name.Length == 0) n.Name = sd.FriendlyName;
+                if (n.Model.Length == 0) n.Model = sd.Model;
+                if (n.Vendor.Length == 0) n.Vendor = sd.Manufacturer;
+            }
             if (n.Name.Length == 0 && n.IPv4.Length > 0 && d.ReverseNames.TryGetValue(n.IPv4, out var rn)) n.Name = rn;
-            if (n.Mac.Length > 0) n.Vendor = VendorDb.Lookup(n.Mac);
         }
+
+        // Netgear switches that do not answer NSDP (newer firmware defaults to "web browser only"):
+        // recognized by UPnP model or by the vendor of their MAC address.
+        foreach (var n in m.All)
+        {
+            if (n.Lltd || n.IsSelf || n.OpenWrt != null || n.Managed || n.Wireless || n.IPv4 == ad.Gateway) continue;
+            ssdpByIp.TryGetValue(n.IPv4, out var sd);
+            bool upnpSwitch = sd != null && Has(sd.Manufacturer, "netgear") && Has(sd.ModelName + " " + sd.ModelNumber, @"\b(GS|XS|MS|JGS|GC)\d");
+            bool macSwitch = Has(n.Vendor, @"^netgear") && (n.Name.Length == 0 || Has(n.Name, @"switch|\bgs\d|\bxs\d"));
+            if (!upnpSwitch && !macSwitch) continue;
+            n.Kind = NodeKind.ManagedSwitch;
+            n.Managed = true;
+            if (n.Name.Length == 0) n.Name = n.Model.Length > 0 ? "Netgear " + n.Model : "Netgear";
+        }
+        foreach (var n in m.All.Where(n => n.Managed && n.IPv4.Length > 0 && ad.IPv4.Length > 0 && !MacUtil.SameSubnet(n.IPv4, ad.IPv4, ad.Prefix)))
+            n.Notes.Add(L.T("IpOutsideNetwork", n.IPv4));
 
         // 7. gateway + Internet
         Node? gw = null;
@@ -196,7 +220,7 @@ public static class ModelBuilder
             if (s == null || s.Kind != NodeKind.Switch || s.Managed) continue;
             // a switch's management MAC hangs off its own switch fabric: merge both nodes
             s.Name = n.Name; s.Model = n.Model; s.IPv4 = n.IPv4; s.Mac = n.Mac; s.Ports = n.Ports;
-            s.Vendor = n.Vendor; s.Virtual = false; s.Managed = true; s.SeenAt.AddRange(n.SeenAt);
+            s.Vendor = n.Vendor; s.Virtual = false; s.Managed = true; s.SeenAt.AddRange(n.SeenAt); s.Notes.AddRange(n.Notes);
             foreach (var c in m.ChildrenOf(n.Key).ToList()) c.Parent = s.Key;
             m.Remove(n.Key);
         }
@@ -288,10 +312,13 @@ public static class ModelBuilder
         {
             if (n.Kind != NodeKind.Device) continue;
             mdnsByIp.TryGetValue(n.IPv4, out var mh);
-            n.DeviceType = DeviceClassifier.Classify(n.Vendor, n.Name, mh, n.Lltd);
+            ssdpByIp.TryGetValue(n.IPv4, out var sd);
+            n.DeviceType = DeviceClassifier.Classify(n.Vendor, n.Name, mh, n.Lltd, sd?.Model);
         }
         return m;
     }
+
+    static bool Has(string? s, string pattern) => s != null && System.Text.RegularExpressions.Regex.IsMatch(s, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     static void Reroot(NetworkModel m, string rootKey)
     {

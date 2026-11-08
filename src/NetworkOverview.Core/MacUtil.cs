@@ -43,6 +43,14 @@ public static class MacUtil
         return ((long)b[0] << 24) | ((long)b[1] << 16) | ((long)b[2] << 8) | b[3];
     }
 
+    public static bool SameSubnet(string a, string b, int prefix)
+    {
+        long x = IpKey(a), y = IpKey(b);
+        if (x == long.MaxValue || y == long.MaxValue || prefix <= 0 || prefix > 32) return false;
+        long mask = (0xFFFFFFFFL << (32 - prefix)) & 0xFFFFFFFFL;
+        return (x & mask) == (y & mask);
+    }
+
     public static string FormatSpeed(double bps)
     {
         var c = CultureInfo.CurrentCulture;

@@ -14,6 +14,8 @@ public sealed class ScanResult
     public LayoutResult Layout { get; init; } = new();
     public List<string> Log { get; init; } = new();
     public string Status { get; init; } = "";
+    public List<string> Warnings { get; init; } = new();
+    public AdapterInfo Adapter { get; init; } = new();
 }
 
 /// <summary>Runs a complete scan on a background thread. Progress texts are already localized.</summary>
@@ -34,10 +36,21 @@ public sealed class ScanController
     public Task<ScanResult> RunAsync(AdapterInfo ad, AppConfig cfg, bool npcapAvailable, IProgress<(string Text, int Done, int Total)> progress)
         => Task.Run(() => Run(ad, cfg, npcapAvailable, progress));
 
-    ScanResult Run(AdapterInfo ad, AppConfig cfg, bool npcap, IProgress<(string Text, int Done, int Total)> progress)
+    ScanResult Run(AdapterInfo initial, AppConfig cfg, bool npcap, IProgress<(string Text, int Done, int Total)> progress)
     {
         void P(string text) => progress.Report((text, 0, 0));
-        Log($"Adapter {ad.Name} {ad.Mac} {ad.IPv4}/{ad.Prefix} GW {ad.Gateway} wireless={ad.Wireless} npcap={npcap}");
+        var warnings = new List<string>();
+
+        // addresses can change at any time (DHCP): read the adapter again, wait briefly for a valid IPv4 address
+        var ad = Refresh(initial);
+        for (int i = 0; i < 10 && ad.IPv4.Length == 0 && !cancel; i++)
+        {
+            P(L.T("StatusWaitIp", ad.Name));
+            Thread.Sleep(1000);
+            ad = Refresh(initial);
+        }
+        Log($"Adapter {ad.Name} {ad.Mac} {(ad.IPv4.Length > 0 ? ad.IPv4 : "no IPv4")}/{ad.Prefix} GW {ad.Gateway} wireless={ad.Wireless} npcap={npcap}");
+        if (ad.IPv4.Length == 0) warnings.Add(L.T("WarnNoIPv4", ad.Name));
 
         if (cfg.PingSweep && ad.IPv4.Length > 0)
         {
@@ -46,7 +59,7 @@ public sealed class ScanController
         }
 
         var owrt = new List<OpenWrtInfo>();
-        foreach (var t in cfg.Targets())
+        foreach (var t in ad.IPv4.Length > 0 ? cfg.Targets() : Enumerable.Empty<string>())
         {
             if (cancel) break;
             P(L.T("StatusOpenWrt", t));
@@ -60,7 +73,8 @@ public sealed class ScanController
         if (cfg.Nsdp && ad.IPv4.Length > 0 && !cancel)
         {
             P(L.T("StatusNsdp"));
-            try { nsdp = Nsdp.Discover(ad.IPv4, ad.Mac, 1500); } catch (Exception ex) { Log("NSDP: " + ex.Message); }
+            try { nsdp = Nsdp.Discover(ad.IPv4, ad.Mac, 1500, Log); } catch (Exception ex) { Log("NSDP: " + ex.Message); }
+            if (nsdp.Count == 0) Log("NSDP: no answer");
             foreach (var d in nsdp) Log($"NSDP: {d.Model} '{d.Name}' {d.Mac} {d.IPv4} ports: {string.Join(" ", d.Ports)}");
         }
 
@@ -73,6 +87,15 @@ public sealed class ScanController
                 Log($"mDNS: {h.IPv4} {h.HostName} [{string.Join(", ", h.Services.Select(s => s.Type.Replace(".local", "")).Distinct())}] {h.Model()}");
         }
 
+        var ssdp = new List<SsdpDevice>();
+        if (cfg.Ssdp && ad.IPv4.Length > 0 && !cancel)
+        {
+            P(L.T("StatusSsdp"));
+            try { ssdp = Ssdp.Discover(IPAddress.Parse(ad.IPv4), 2500, Log); } catch (Exception ex) { Log("SSDP: " + ex.Message); }
+            foreach (var x in ssdp.Where(x => x.FriendlyName.Length > 0 || x.Model.Length > 0))
+                Log($"SSDP: {x.IPv4} '{x.FriendlyName}' {x.Manufacturer} {x.Model}");
+        }
+
         P(L.T("StatusArp"));
         var neighbors = WindowsNet.GetNeighbors(ad.Index);
         var wlan = ad.Wireless ? WindowsNet.GetWlanInfo(ad.Name) : null;
@@ -82,7 +105,11 @@ public sealed class ScanController
         var extra = new HashSet<string>();
         var pingIps = new HashSet<string>();
         foreach (var nb in neighbors)
-            if (nb.IPv4 == ad.Gateway || cfg.PlaceOthers) { extra.Add(nb.Mac); pingIps.Add(nb.IPv4); }
+        {
+            // infrastructure is always placed: gateway and Netgear devices (possible switches without NSDP)
+            bool infra = nb.IPv4 == ad.Gateway || Devices.VendorDb.Lookup(nb.Mac).StartsWith("Netgear", StringComparison.OrdinalIgnoreCase);
+            if (infra || cfg.PlaceOthers) { extra.Add(nb.Mac); pingIps.Add(nb.IPv4); }
+        }
         foreach (var o in owrt.Where(o => o.Ok))
         {
             extra.Add(o.MainMac);
@@ -130,15 +157,21 @@ public sealed class ScanController
                     status += " " + L.T("RunAsAdmin");
             }
             else if (job.Partial) status = L.T("Partial");
+            if (job.NonObservers.Count > 0)
+            {
+                var names = job.NonObservers.Select(mac => lltdHosts.FirstOrDefault(h => h.Mac == mac) is { Name.Length: > 0 } h ? h.Name : mac);
+                warnings.Add(L.T("WarnNonObservers", string.Join(", ", names)));
+            }
+            if (job.Partial) warnings.Add(L.T("Partial"));
         }
-        else if (!npcap) status = L.T("NpcapMissingShort");
+        else if (!npcap) { status = L.T("NpcapMissingShort"); warnings.Add(L.T("NpcapMissingShort")); }
 
         P(L.T("StatusEvaluate"));
         var ips = neighbors.Select(n => n.IPv4).Concat(lltdHosts.Select(h => h.IPv4)).Where(i => i.Length > 0);
         var reverse = WindowsNet.ReverseLookup(ips, 3000);
         var data = new ScanData
         {
-            Adapter = ad, Neighbors = neighbors, OpenWrt = owrt, Nsdp = nsdp, Mdns = mdns, Wlan = wlan,
+            Adapter = ad, Neighbors = neighbors, OpenWrt = owrt, Nsdp = nsdp, Mdns = mdns, Ssdp = ssdp, Wlan = wlan,
             LltdHosts = lltdHosts, Tree = tree, ReverseNames = reverse,
         };
         var model = ModelBuilder.Build(data);
@@ -148,12 +181,26 @@ public sealed class ScanController
         int cntS = model.All.Count(n => n.Kind == NodeKind.Switch);
         int cntO = model.All.Count(n => n.Parent == null && n.Kind is NodeKind.Device or NodeKind.ManagedSwitch && !n.IsSelf);
         var summary = L.T("Summary", cntL, cntS, cntO);
-        int bad = owrt.Count(o => !o.Ok);
-        if (bad > 0) summary += " " + L.T("OpenWrtUnreachable", bad);
+        var bad = owrt.Where(o => !o.Ok).ToList();
+        if (bad.Count > 0)
+        {
+            summary += " " + L.T("OpenWrtUnreachable", bad.Count);
+            warnings.Add(L.T("WarnOpenWrt", string.Join(", ", bad.Select(o => o.Target))));
+        }
         status = (status.Length > 0 ? status + " – " : "") + summary;
         Log(status);
         List<string> logCopy;
         lock (log) logCopy = new List<string>(log);
-        return new ScanResult { Model = model, Layout = layout, Log = logCopy, Status = status };
+        return new ScanResult { Model = model, Layout = layout, Log = logCopy, Status = status, Warnings = warnings, Adapter = ad };
+    }
+
+    static AdapterInfo Refresh(AdapterInfo ad)
+    {
+        try
+        {
+            var all = WindowsNet.GetAdapters();
+            return all.FirstOrDefault(a => a.Id == ad.Id) ?? all.FirstOrDefault(a => a.Mac == ad.Mac) ?? ad;
+        }
+        catch (Exception) { return ad; }
     }
 }
