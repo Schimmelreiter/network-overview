@@ -125,8 +125,8 @@ public static class DeviceIcons
     {
         Color c1, c2;
         if (managed) { c1 = Color.FromArgb(70, 110, 190); c2 = Color.FromArgb(25, 50, 110); }
-        else if (inferred) { c1 = t.Dark ? Color.FromArgb(110, 125, 150) : Color.FromArgb(235, 242, 250); c2 = t.Dark ? Color.FromArgb(60, 70, 90) : Color.FromArgb(140, 165, 200); }
-        else { c1 = t.Dark ? Color.FromArgb(120, 140, 175) : Color.FromArgb(225, 238, 252); c2 = t.Dark ? Color.FromArgb(55, 70, 100) : Color.FromArgb(110, 150, 205); }
+        else if (inferred) { c1 = t.Dark ? Color.FromArgb(175, 188, 210) : Color.FromArgb(235, 242, 250); c2 = t.Dark ? Color.FromArgb(105, 120, 150) : Color.FromArgb(140, 165, 200); }
+        else { c1 = t.Dark ? Color.FromArgb(165, 185, 220) : Color.FromArgb(225, 238, 252); c2 = t.Dark ? Color.FromArgb(90, 115, 160) : Color.FromArgb(110, 150, 205); }
         Box(g, R(x - 24, y - 8, 48, 16), 2, c1, c2, t);
         using var port = new SolidBrush(managed ? Color.Gainsboro : Color.FromArgb(90, 90, 90));
         for (int i = 0; i < 6; i++) g.FillRectangle(port, R(x - 19 + i * 7, y - 2, 5, 4));
@@ -312,21 +312,26 @@ public static class DeviceIcons
     /// <summary>Screen standing on a fabric speaker base (Nest Hub style).</summary>
     public static void StandDisplay(Graphics g, float x, float y, Theme t)
     {
+        // round fabric speaker base, clearly visible below the floating screen
         using (var p = new GraphicsPath())
         {
-            p.AddEllipse(R(x - 14, y + 4, 28, 14));
-            Fill(g, p, t.Fabric, t.Dark ? Color.FromArgb(80, 80, 78) : Color.FromArgb(160, 160, 156), LinearGradientMode.Vertical, t);
+            p.AddEllipse(R(x - 17, y + 6, 34, 16));
+            Fill(g, p, t.Fabric, t.Dark ? Color.FromArgb(80, 80, 78) : Color.FromArgb(150, 150, 146), LinearGradientMode.Vertical, t);
         }
-        Box(g, R(x - 23, y - 20, 46, 30), 4, Color.White, Color.FromArgb(220, 220, 220), t);
-        var scr = R(x - 20, y - 17, 40, 24);
-        using var br = new LinearGradientBrush(scr, t.Screen1, t.Screen2, LinearGradientMode.ForwardDiagonal);
-        g.FillRectangle(br, scr);
+        // slightly tilted screen with a white frame
+        using (var p = new GraphicsPath())
+        {
+            p.AddPolygon(new[] { new PointF(x - 22, y - 20), new PointF(x + 22, y - 20), new PointF(x + 24, y + 9), new PointF(x - 24, y + 9) });
+            Fill(g, p, Color.White, Color.FromArgb(215, 215, 215), LinearGradientMode.Vertical, t);
+        }
+        using var br = new LinearGradientBrush(R(x - 20, y - 17, 40, 23), t.Screen1, t.Screen2, LinearGradientMode.ForwardDiagonal);
+        g.FillPolygon(br, new[] { new PointF(x - 19, y - 17), new PointF(x + 19, y - 17), new PointF(x + 20.5f, y + 6), new PointF(x - 20.5f, y + 6) });
     }
 
     /// <summary>Small round streaming dongle with cable (Chromecast style).</summary>
     public static void Disc(Graphics g, float x, float y, Theme t)
     {
-        using (var pen = new Pen(Color.FromArgb(40, 40, 44), 3))
+        using (var pen = new Pen(t.Dark ? Color.FromArgb(185, 185, 190) : Color.FromArgb(40, 40, 44), 3))
             g.DrawBezier(pen, x + 8, y + 8, x + 18, y + 18, x + 22, y + 4, x + 24, y - 12);
         using (var p = new GraphicsPath())
         {
