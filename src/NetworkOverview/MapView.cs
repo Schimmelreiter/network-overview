@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using NetworkOverview.Core;
@@ -15,6 +16,7 @@ public sealed class MapView : Control
     float zoom = 1f;
     readonly ToolTip tip = new() { AutoPopDelay = 20000, InitialDelay = 400, ReshowDelay = 100 };
 
+    [Browsable(false), DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Theme Theme { get; set; } = Theme.Current();
     public Node? Selected { get; private set; }
     public event EventHandler<Node?>? SelectionChanged;
@@ -29,12 +31,14 @@ public sealed class MapView : Control
 
     float Scale1 => DeviceDpi / 96f * zoom;
 
+    [Browsable(false), DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public float Zoom
     {
         get => zoom;
         set { zoom = Math.Clamp(value, 0.4f, 3f); UpdateSize(); Invalidate(); }
     }
 
+    [Browsable(false), DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public ScanResult? Result
     {
         get => result;
