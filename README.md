@@ -9,6 +9,11 @@ network is built – Internet, router, switches, access points and devices – a
 switch structure with the same method Windows 7 used: the **Link Layer Topology Discovery (LLTD)**
 protocol.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/example-dark.png">
+  <img alt="Example network map" src="docs/example-light.png" width="640">
+</picture>
+
 ## Features
 
 - **LLTD discovery and topology tests**: finds LLTD responders and detects switches – also

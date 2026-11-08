@@ -9,6 +9,11 @@ zeigt, wie dein Netz aufgebaut ist – Internet, Router, Switches, Zugangspunkte
 ermittelt die Switch-Struktur mit demselben Verfahren wie Windows 7: dem Protokoll
 **Link Layer Topology Discovery (LLTD)**.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/example-dark.png">
+  <img alt="Beispiel einer Netzwerkübersicht" src="docs/example-light.png" width="640">
+</picture>
+
 ## Funktionen
 
 - **LLTD-Erkennung und Topologietests**: findet LLTD-Responder und erkennt Switches – auch
