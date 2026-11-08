@@ -11,13 +11,14 @@
 
 ## Releases (the owner asked Claude to trigger releases)
 1. Make sure `main` is green in the Build workflow.
-2. Choose the next version (semantic versioning, `vMAJOR.MINOR.PATCH`). Versions below 1.0 are published as pre-releases.
-3. Tag `main` and push the tag:
+2. Choose the next version (semantic versioning `MAJOR.MINOR.PATCH`). Versions below 1.0 are published as pre-releases.
+3. Start the `Release` workflow on `main` with the version; it runs the tests, creates the tag `vX.Y.Z`
+   and the release. (Pushing tags and creating refs is blocked for Claude sessions, dispatching works.)
    ```
-   git fetch origin main
-   git tag vX.Y.Z origin/main
-   git push origin vX.Y.Z
+   gh api -X POST repos/Schimmelreiter/network-overview/actions/workflows/release.yml/dispatches -f ref=main -f 'inputs[version]=X.Y.Z'
    ```
-4. Watch the `Release` workflow (`gh run list --workflow release.yml`) until the release has all assets:
+   The owner can alternatively push a tag `vX.Y.Z` or use Actions -> Release -> Run workflow.
+4. Watch the run (`gh run list --workflow release.yml`) until the release has all assets:
    self-contained and framework-dependent executables for win-x64 and win-arm64 plus `SHA256SUMS.txt`.
-5. To rebuild an existing tag, run the `Release` workflow manually with input `tag`.
+5. Running the workflow again for an existing version rebuilds and replaces its assets.
+6. Changes reach `main` only through pull requests (create and merge them via the REST API, `gh pr create` needs GraphQL).

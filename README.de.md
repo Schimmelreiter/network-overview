@@ -126,7 +126,8 @@ Benötigt das .NET 10 SDK. Kernbibliothek und Tests (inklusive eines simulierten
 lernenden Switches und LLTD-Respondern) lassen sich auch unter Linux bauen und ausführen; die
 Windows-Forms-Anwendung wird unter Windows gebaut.
 
-Releases baut GitHub Actions, sobald ein Tag `v*` gepusht wird:
+Releases baut GitHub Actions – entweder ein Tag `v*` pushen oder den Workflow
+*Actions → Release → Run workflow* mit einer Versionsnummer starten (das Tag wird dann automatisch angelegt):
 
 ```
 git tag v1.0.0
