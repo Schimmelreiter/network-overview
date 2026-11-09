@@ -41,6 +41,7 @@ public static class DeviceIcons
             case DeviceType.HeatingController: Thermostat(g, x, y, t); break;
             case DeviceType.Receiver: Receiver(g, x, y, t); break;
             case DeviceType.AirConditioner: AirConditioner(g, x, y, t); break;
+            case DeviceType.Camera: Camera(g, x, y, t); break;
             default: Monitor(g, x, y, grey, !n.Lltd && !n.IsSelf && n.Name.Length == 0, t); break;
         }
         if (n.Wireless) Bars(g, x, y, t);
@@ -345,6 +346,26 @@ public static class DeviceIcons
         using (var fb = new SolidBrush(Color.FromArgb(255, 160, 40))) g.FillPath(fb, flame);
         using var dot = new SolidBrush(Color.FromArgb(150, 150, 150));
         g.FillEllipse(dot, R(x - 2, y + 13, 4, 4));
+    }
+
+    /// <summary>Small IP camera on a stand (round head with lens).</summary>
+    public static void Camera(Graphics g, float x, float y, Theme t)
+    {
+        using (var foot = new SolidBrush(t.Dark ? Color.FromArgb(150, 150, 156) : Color.FromArgb(70, 70, 76)))
+        {
+            g.FillRectangle(foot, R(x - 2.5f, y + 8, 5, 8));
+            g.FillEllipse(foot, R(x - 12, y + 14, 24, 6));
+        }
+        using (var p = new GraphicsPath())
+        {
+            p.AddEllipse(R(x - 15, y - 20, 30, 30));
+            Fill(g, p, Color.White, Color.FromArgb(210, 210, 214), LinearGradientMode.Vertical, t);
+        }
+        using (var ring = new SolidBrush(Color.FromArgb(40, 40, 46))) g.FillEllipse(ring, R(x - 9, y - 14, 18, 18));
+        using (var lens = new SolidBrush(Color.FromArgb(40, 90, 150))) g.FillEllipse(lens, R(x - 5, y - 10, 10, 10));
+        using (var glare = new SolidBrush(Color.FromArgb(200, 230, 255))) g.FillEllipse(glare, R(x - 3, y - 8, 3, 3));
+        using var led = new SolidBrush(Color.FromArgb(80, 210, 90));
+        g.FillEllipse(led, R(x + 6, y - 18, 3, 3));
     }
 
     /// <summary>Wall-mounted split air conditioner with louvre and cold air flow.</summary>

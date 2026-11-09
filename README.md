@@ -28,7 +28,7 @@ protocol.
 - **SSDP / UPnP**: names and models from UPnP device descriptions (TVs, receivers, routers, newer
   Netgear switches).
 - **Device types with their own symbols**: Echo Dot, Echo Spot, Echo Show, Fire TV, Google speakers
-  and displays, Chromecast, phones, tablets, printers, TVs, NAS, TV receivers (set-top boxes such as Vu+, GigaBlue, Dreambox), heating controllers, air conditioners, IoT devices. Detection uses mDNS,
+  and displays, Chromecast, phones, tablets, printers, TVs, NAS, TV receivers (set-top boxes such as Vu+, GigaBlue, Dreambox), heating controllers, air conditioners, IP cameras, IoT devices. Detection uses mDNS,
   the vendor part of the MAC address and, if nothing else helps, the device name.
 - Light and dark mode following Windows, languages German, English, Spanish and French.
 - Tooltips and details, context menu (web interface, shares, copy addresses), zoom

@@ -48,6 +48,7 @@ internal static class Demo
         Add("tc", "Buderus", "gw", type: DeviceType.HeatingController, ip: "192.168.75.248", wifi: true);
         Add("plug", "shelly-plug", "gw", type: DeviceType.Iot, ip: "192.168.75.249", wifi: true);
         Add("ac", "Klima-WZ", "gw", type: DeviceType.AirConditioner, ip: "192.168.75.209", wifi: true);
+        Add("cam", "Cam-WZ", "gw", type: DeviceType.Camera, ip: "192.168.75.221", wifi: true);
         Add("unk", "", null, ip: "192.168.75.170");
         Add("unk2", "Sonos-Bad", null, type: DeviceType.MediaPlayer, ip: "192.168.75.171");
         return m;

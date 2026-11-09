@@ -26,6 +26,7 @@ public enum DeviceType
     HeatingController,
     Receiver,
     AirConditioner,
+    Camera,
 }
 
 /// <summary>Vendor lookup by MAC prefix (IEEE MA-L registry, embedded).</summary>
@@ -99,6 +100,11 @@ public static class DeviceClassifier
         // --- heating (Bosch/Buderus/Junkers and others); checked before generic IoT rules ---
         if (Has(names, @"buderus|junkers|logamatic|easycontrol|\btc100|\bkm[23]00|\bmx300|ems[-_ ]?esp|vaillant|sensonet|viessmann|vitoconnect|wolf[-_ ]?link|heizung|thermostat|chaudi[eè]re|caldera"))
             return DeviceType.HeatingController;
+
+        // --- IP cameras (Tapo, Wansview, ESP32-CAM meter readers, ...) ---
+        if (Has(names, @"\bcam\b|\bcam[-_]|[-_]cam\b|kamera|camera|c[aá]mara|cam[eé]ra|webcam|\bipc\b|tapo[-_ ]?c\d|wansview|doorbell|t[üu]rklingel")
+            || (Has(vendor, @"^TP-Link") && Has(names, @"\bc[1-5]\d{2}\b")))
+            return DeviceType.Camera;
 
         // --- air conditioners (Wi-Fi adapters often carry the MAC of a module maker, so the name counts too) ---
         if (Has(vendor, @"^(Fujitsu General|GD Midea Air-Conditioning|Gree Electric|Daikin)")
