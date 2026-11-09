@@ -13,6 +13,11 @@ namespace NetworkOverview.Tests
         public bool Responder;
         public bool Wireless;            // host attached via Wi-Fi
         public bool Deaf;                // never sees frames addressed to foreign MACs (like a NIC behind an internal switch)
+        // Internal switch that learns only from the wire, not from frames the CPU sends (DSA port of a
+        // set-top box): a foreign unicast address that was once seen as a source on the wire is
+        // forwarded back to the wire and never reaches the CPU.
+        public bool EmbeddedSwitch;
+        public HashSet<string> WireLearned = new HashSet<string>();
         public List<SimNode> Links = new List<SimNode>();
         public Dictionary<string, SimNode> Fdb = new Dictionary<string, SimNode>();
         // responder state
@@ -75,6 +80,11 @@ namespace NetworkOverview.Tests
                     bool bc = (f[0] & 1) != 0;
                     if (to.Wireless && !bc && dst != to.Mac) continue;  // Wi-Fi clients only see their own frames
                     if (to.Deaf && !bc && dst != to.Mac) continue;
+                    if (to.EmbeddedSwitch)
+                    {
+                        if (src != to.Mac) to.WireLearned.Add(src);
+                        if (!bc && dst != to.Mac && to.WireLearned.Contains(dst)) continue;
+                    }
                     Delivered++;
                     if (to.Responder) Respond(to, f);
                     else to.Inbox.Enqueue(f);
