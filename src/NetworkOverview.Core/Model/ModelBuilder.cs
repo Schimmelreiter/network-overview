@@ -350,7 +350,7 @@ public static class ModelBuilder
             if (n.Kind != NodeKind.Device) continue;
             mdnsByIp.TryGetValue(n.IPv4, out var mh);
             ssdpByIp.TryGetValue(n.IPv4, out var sd);
-            n.DeviceType = DeviceClassifier.Classify(n.Vendor, n.Name, mh, n.Lltd, sd?.Model);
+            n.DeviceType = DeviceClassifier.Classify(n.Vendor, n.Name, mh, n.Lltd, sd?.Model, n.Wireless ? true : n.InTree ? false : null);
         }
         return m;
     }

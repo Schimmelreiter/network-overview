@@ -421,6 +421,8 @@ static class MiscTests
         C(DeviceType.Printer, "Brother Industries, LTD.", "BRW123");
         C(DeviceType.Computer, "", "QUATTRO");
         C(DeviceType.AirConditioner, "", "Klima-SZ");
+        Assert.Equal(DeviceType.FireTv, DeviceClassifier.Classify("", "Amazon-WZ", null, false, null, false), "wired Amazon device");
+        Assert.Equal(DeviceType.AmazonDevice, DeviceClassifier.Classify("", "Amazon-WZ", null, false, null, true), "Amazon device via Wi-Fi");
         C(DeviceType.AirConditioner, "Espressif Inc.", "Klima-WZ");
         C(DeviceType.AirConditioner, "GD Midea Air-Conditioning Equipment Co.,Ltd.", "");
         C(DeviceType.Receiver, "Marusys", "duo2");

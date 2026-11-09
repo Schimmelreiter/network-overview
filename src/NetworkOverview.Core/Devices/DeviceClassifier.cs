@@ -74,7 +74,7 @@ public static class DeviceClassifier
 {
     static bool Has(string? s, string pattern) => s != null && Regex.IsMatch(s, pattern, RegexOptions.IgnoreCase);
 
-    public static DeviceType Classify(string vendor, string? name, MdnsHost? mdns, bool lltdResponder, string? upnpModel = null)
+    public static DeviceType Classify(string vendor, string? name, MdnsHost? mdns, bool lltdResponder, string? upnpModel = null, bool? wireless = null)
     {
         string names = string.Join(" ", new[] { name, mdns?.FriendlyName(), mdns?.HostName }.Where(s => !string.IsNullOrEmpty(s)));
         string model = string.Join(" ", new[] { mdns?.Model(), upnpModel }.Where(s => !string.IsNullOrEmpty(s)));
@@ -121,7 +121,9 @@ public static class DeviceClassifier
             if (Has(names, @"spot")) return DeviceType.EchoSpot;
             if (Has(names, @"fire|aft[a-z]|stick")) return DeviceType.FireTv;
             if (Has(names, @"echo|alexa|dot") || echoLike) return DeviceType.EchoDot;
-            if (amazon) return DeviceType.AmazonDevice;
+            // Echo devices have no Ethernet port: an Amazon device on a cable is a Fire TV with LAN adapter
+            if (wireless == false) return DeviceType.FireTv;
+            return DeviceType.AmazonDevice;
         }
 
         // --- Google ---
