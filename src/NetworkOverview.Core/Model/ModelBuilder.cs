@@ -25,7 +25,7 @@ public sealed class ScanData
 /// <summary>Merges LLTD, ARP, OpenWrt, NSDP and mDNS data into one tree rooted at the Internet.</summary>
 public static class ModelBuilder
 {
-    static readonly System.Text.RegularExpressions.Regex WifiPort = new("^(wlan|phy|wl|ra|rai|ath)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    static readonly System.Text.RegularExpressions.Regex WifiPort = new("^(wlan|phy|wl|ra|rai|ath|mesh|wds|sta)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     public static NetworkModel Build(ScanData d)
     {
@@ -139,7 +139,7 @@ public static class ModelBuilder
             foreach (var (mac, st) in o.Stations)
             {
                 var n = ByMac(mac);
-                if (n == null) continue;
+                if (n == null || n.OpenWrt != null) continue;    // OpenWrt devices: see repeaters below
                 n.Wireless = true;
                 if (n.Medium.Length == 0) n.Medium = MediumName(71);
                 o.WifiSsid.TryGetValue(st.Interface, out var ssid);
@@ -149,8 +149,19 @@ public static class ModelBuilder
                 if (owNode != null) n.ApKey = owNode.Key;
             }
         }
-        // OpenWrt devices connected via Wi-Fi to another OpenWrt AP (repeater / mesh / WDS):
-        // their station address may differ slightly from the interface addresses (locally administered variants)
+        // OpenWrt devices connected via Wi-Fi to another OpenWrt AP (repeater / mesh / WDS). With WDS and
+        // mesh both sides list each other as stations; the repeater is the one that reaches the gateway
+        // through a Wi-Fi port (bridge forwarding table). The station address may differ slightly from the
+        // interface addresses (locally administered variants).
+        string gwMac = d.Neighbors.FirstOrDefault(nb => ad.Gateway.Length > 0 && nb.IPv4 == ad.Gateway)?.Mac
+                       ?? d.OpenWrt.FirstOrDefault(o => o.Ok && o.Host == ad.Gateway)?.MainMac ?? "";
+        bool? WifiUplink(OpenWrtInfo o)
+        {
+            if (gwMac.Length == 0 || o.MainMac == gwMac || o.Interfaces.Values.Contains(gwMac)) return gwMac.Length == 0 ? null : false;
+            return o.Fdb.TryGetValue(gwMac, out var port) ? WifiPort.IsMatch(port) : null;
+        }
+        List<string> MacsOf(OpenWrtInfo o) => o.Interfaces.Values.Append(o.MainMac).Distinct().ToList();
+        bool Lists(OpenWrtInfo ap, OpenWrtInfo x) => ap.Stations.Keys.Any(k => MacsOf(x).Any(m => MacUtil.SameDevice(m, k)));
         foreach (var o in d.OpenWrt.Where(o => o.Ok))
         {
             var apNode = ByMac(o.MainMac);
@@ -158,10 +169,14 @@ public static class ModelBuilder
             foreach (var o2 in d.OpenWrt.Where(x => x.Ok && x != o))
             {
                 var rep = ByMac(o2.MainMac);
-                if (rep == null || rep == apNode || rep.ApKey.Length > 0) continue;
-                var macs = o2.Interfaces.Values.Append(o2.MainMac).Concat(rep.AltMacs).Distinct().ToList();
+                if (rep == null || rep == apNode || rep.ApKey.Length > 0 || rep.IsGateway || o2.Host == ad.Gateway) continue;
+                var macs = MacsOf(o2);
                 var st = o.Stations.FirstOrDefault(kv => macs.Any(m => MacUtil.SameDevice(m, kv.Key)));
                 if (st.Key == null) continue;
+                bool? upRep = WifiUplink(o2), upAp = WifiUplink(o);
+                if (upRep == false) continue;                          // reaches the gateway by cable
+                if (upRep == null && (upAp == true || Lists(o2, o))) continue;   // direction unknown
+                if (apNode.ApKey == rep.Key) continue;                 // never create a cycle
                 rep.Wireless = true;
                 rep.Medium = MediumName(71);
                 rep.ApKey = apNode.Key;
