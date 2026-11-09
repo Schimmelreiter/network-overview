@@ -28,7 +28,7 @@ ermittelt die Switch-Struktur mit demselben Verfahren wie Windows 7: dem Protoko
 - **SSDP / UPnP**: Namen und Modelle aus UPnP-Gerätebeschreibungen (Fernseher, Receiver, Router,
   neuere Netgear-Switches).
 - **Gerätetypen mit eigenen Symbolen**: Echo Dot, Echo Spot, Echo Show, Fire TV, Google-Lautsprecher
-  und -Displays, Chromecast, Smartphones, Tablets, Drucker, Fernseher, NAS, Heizungsregler,
+  und -Displays, Chromecast, Smartphones, Tablets, Drucker, Fernseher, NAS, Receiver (Set-Top-Boxen wie Vu+, GigaBlue, Dreambox), Heizungsregler,
   IoT-Geräte. Erkannt wird
   über mDNS, den Herstellerteil der MAC-Adresse und, wenn sonst nichts hilft, den Gerätenamen.
 - Hell- und Dunkelmodus nach Windows-Einstellung, Sprachen Deutsch, Englisch, Spanisch und

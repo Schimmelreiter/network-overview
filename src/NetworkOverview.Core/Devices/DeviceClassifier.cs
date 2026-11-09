@@ -24,6 +24,7 @@ public enum DeviceType
     Chromecast,
     GoogleDevice,
     HeatingController,
+    Receiver,
 }
 
 /// <summary>Vendor lookup by MAC prefix (IEEE MA-L registry, embedded).</summary>
@@ -97,6 +98,12 @@ public static class DeviceClassifier
         // --- heating (Bosch/Buderus/Junkers and others); checked before generic IoT rules ---
         if (Has(names, @"buderus|junkers|logamatic|easycontrol|\btc100|\bkm[23]00|\bmx300|ems[-_ ]?esp|vaillant|sensonet|viessmann|vitoconnect|wolf[-_ ]?link|heizung|thermostat|chaudi[eè]re|caldera"))
             return DeviceType.HeatingController;
+
+        // --- TV receivers / set-top boxes (Enigma2 boxes and others: satellite, cable, terrestrial, IPTV) ---
+        // Checked before the generic rules: these boxes announce SMB/FTP and run LLTD responders like computers.
+        if (Has(vendor, @"^(Marusys|Impex-Sat|Iffu|Dream Property|Xtrend|Edision|AB-COM|Air Digital|TechniSat|Kathrein|HUMAX Co)")
+            || Has(names, @"vu\+|vuplus|\b(duo|solo|uno|zero|ultimo)(2|4k|4kse|se)\b|\bultimo|gigablue|\bgb[-_ ]?(quad|ue|trio|ip)|dreambox|\bdm\d{3,4}\b|enigma|zgemma|osmio|\bet\d{4}\b|quadbox|formuler|(?<!av[-_ ]?)receiver|set[-_ ]?top|sat[-_ ]?box"))
+            return DeviceType.Receiver;
 
         // --- Amazon: vendor, then name to tell the models apart ---
         // Echo speakers announce Spotify Connect + Matter with host names like "none.local" or "Android-2.local".
