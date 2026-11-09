@@ -149,6 +149,27 @@ public static class ModelBuilder
                 if (owNode != null) n.ApKey = owNode.Key;
             }
         }
+        // OpenWrt devices connected via Wi-Fi to another OpenWrt AP (repeater / mesh / WDS):
+        // their station address may differ slightly from the interface addresses (locally administered variants)
+        foreach (var o in d.OpenWrt.Where(o => o.Ok))
+        {
+            var apNode = ByMac(o.MainMac);
+            if (apNode == null) continue;
+            foreach (var o2 in d.OpenWrt.Where(x => x.Ok && x != o))
+            {
+                var rep = ByMac(o2.MainMac);
+                if (rep == null || rep == apNode || rep.ApKey.Length > 0) continue;
+                var macs = o2.Interfaces.Values.Append(o2.MainMac).Concat(rep.AltMacs).Distinct().ToList();
+                var st = o.Stations.FirstOrDefault(kv => macs.Any(m => MacUtil.SameDevice(m, kv.Key)));
+                if (st.Key == null) continue;
+                rep.Wireless = true;
+                rep.Medium = MediumName(71);
+                rep.ApKey = apNode.Key;
+                o.WifiSsid.TryGetValue(st.Value.Interface, out var ssid);
+                rep.Ssid = ssid ?? rep.Ssid;
+                rep.Signal = st.Value.Signal + " dBm";
+            }
+        }
         var mdnsByIp = d.Mdns.GroupBy(h => h.IPv4).ToDictionary(g => g.Key, g => g.First());
         var ssdpByIp = d.Ssdp.Where(x => x.IPv4.Length > 0).GroupBy(x => x.IPv4).ToDictionary(g => g.Key, g => g.First());
         foreach (var n in m.All)

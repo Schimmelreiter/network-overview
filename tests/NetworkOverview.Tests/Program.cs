@@ -19,7 +19,9 @@ var tests = new List<(string Name, Action Body)>
     ("Topology: responder that cannot observe is not used as observer", TopologyTests.DeafResponder),
     ("Topology: responder behind an internal switch is not used as observer", TopologyTests.EmbeddedSwitchResponder),
     ("Topology: observer that drops probes from other responders is demoted", TopologyTests.PartlyDeafResponder),
+    ("Topology: switch that floods frames to its management address", TopologyTests.FloodingManagement),
     ("Model + layout: merge sources, no crossings", ModelTests.MergeAndLayout),
+    ("Model: OpenWrt AP connected via Wi-Fi becomes a repeater", ModelTests.WifiRepeater),
     ("Layout: wireless group below wired switch (issue screenshot)", ModelTests.WirelessBelowWired),
     ("mDNS: build and parse packets", MiscTests.MdnsRoundTrip),
     ("OpenWrt: parse script output", MiscTests.OpenWrtParse),
@@ -95,6 +97,7 @@ sealed class TestNet
         var job = new MapperJob { MyMac = Mac("M"), MyWired = wired, DiscoverMs = 600, LearnPauseMs = 5, IO = new SimIO(Net, H["M"]) };
         foreach (var x in new[] { "GW", "u3", "N1mgmt", "N2mgmt", "APcpu" }) job.ExtraMacs.Add(Mac(x));
         job.WirelessMacs.Add(Mac("w1")); job.WirelessMacs.Add(Mac("w2"));
+        job.SwitchMacs.Add(Mac("N1mgmt")); job.SwitchMacs.Add(Mac("N2mgmt"));
         job.Run();
         return job;
     }
@@ -161,6 +164,20 @@ static partial class TopologyTests
         Assert.Equal(expected, t.Describe(job.Tree), "tree with embedded-switch responder");
     }
 
+    // Netgear Plus switches flood frames addressed to their own management MAC (GS116Ev2 at Hauke's):
+    // without the flood test the management address lands on the parent switch.
+    public static void FloodingManagement()
+    {
+        var t = new TestNet(0.0, true, 6);
+        t.N1.FloodMac = t.Mac("N1mgmt");
+        t.N2.FloodMac = t.Mac("N2mgmt");
+        var job = t.Map(true);
+        Assert.True(job.FloodHosts.TryGetValue(t.Mac("N1mgmt"), out var f1) && f1.Count == 2
+            && f1.Contains(t.Mac("n1a")) && f1.Contains(t.Mac("n1b")), "N1 flood hosts");
+        string expected = "{apl1,w1}\n  APcpu\n  apl1\n  w1\n{n1a,n1b,r1}\n  {n1a,n1b}\n    N1mgmt\n    n1a\n    n1b\n  GW\n  r1\n{n2a}\n  N2mgmt\n  n2a\nM\nu1\nu2\nu3\n";
+        Assert.Equal(expected, t.Describe(job.Tree), "tree with flooding switches");
+    }
+
     // Passes the self-test but stops recording probes during the rounds: demoted while mapping.
     public static void PartlyDeafResponder()
     {
@@ -202,6 +219,33 @@ static class ModelTests
             Neighbors = new() { Nb("GW", "192.168.75.1"), Nb("u3", "192.168.75.23"), Nb("N1mgmt", "192.168.75.3"), Nb("N2mgmt", "192.168.75.4"), Nb("APcpu", "192.168.75.6") },
             OpenWrt = new() { router, ap }, Nsdp = new() { ns1, ns2 }, LltdHosts = job.Hosts, Tree = job.Tree,
         };
+    }
+
+    public static void WifiRepeater()
+    {
+        var ad = new AdapterInfo { Name = "Ethernet", Mac = "02:00:00:00:00:01", IPv4 = "192.168.75.60", Prefix = 24, Gateway = "192.168.75.1" };
+        var gw = new OpenWrtInfo { Target = "root@192.168.75.1", Name = "Link", MainMac = "02:00:00:00:00:10" };
+        gw.Interfaces["br-lan"] = gw.MainMac;
+        var sz = new OpenWrtInfo { Target = "root@192.168.75.6", Name = "WLAN-AP-SZ", MainMac = "80:af:ca:fb:3a:71" };
+        sz.Interfaces["br-lan"] = sz.MainMac; sz.Interfaces["phy1-ap0"] = "82:af:ca:fb:3a:73"; sz.WifiSsid["phy1-ap0"] = "HomeNet";
+        sz.Stations["82:af:ca:fb:3a:2f"] = new OpenWrtStation { Interface = "phy1-ap0", Signal = "-60" };   // repeater uplink
+        sz.Stations["02:00:00:00:00:77"] = new OpenWrtStation { Interface = "phy1-ap0", Signal = "-50" };   // phone
+        var ku = new OpenWrtInfo { Target = "root@192.168.75.7", Name = "WLAN-AP-Kueche", MainMac = "80:af:ca:fb:3a:2d" };
+        ku.Interfaces["br-lan"] = ku.MainMac; ku.Interfaces["phy1-sta0"] = "80:af:ca:fb:3a:2e"; ku.WifiSsid["phy0-ap0"] = "HomeNet";
+        ku.Stations["02:00:00:00:00:88"] = new OpenWrtStation { Interface = "phy0-ap0", Signal = "-40" };
+        var data = new ScanData
+        {
+            Adapter = ad, OpenWrt = { gw, sz, ku },
+            Neighbors = { new Neighbor { Mac = gw.MainMac, IPv4 = "192.168.75.1" }, new Neighbor { Mac = sz.MainMac, IPv4 = "192.168.75.6" },
+                          new Neighbor { Mac = ku.MainMac, IPv4 = "192.168.75.7" } },
+        };
+        L.SetLanguage("en");
+        var m = ModelBuilder.Build(data);
+        var k = m.All.First(n => n.Name == "WLAN-AP-Kueche");
+        Assert.Equal(m.All.First(n => n.Name == "WLAN-AP-SZ").Key, k.Parent ?? "", "repeater hangs off its AP");
+        Assert.True(k.Wireless && k.Dashed, "repeater link is wireless");
+        Assert.Equal("Wi-Fi repeater", NodeText.TypeName(k), "type name");
+        Assert.Equal(k.Key, m.All.First(n => n.Mac == "02:00:00:00:00:88").Parent ?? "", "repeater keeps its own clients");
     }
 
     public static void MergeAndLayout()

@@ -8,7 +8,7 @@ public static class NodeText
     public static string TypeName(Node n) => n.Kind switch
     {
         NodeKind.Gateway => L.T("Gateway"),
-        NodeKind.AccessPoint => L.T("Kind_AccessPoint"),
+        NodeKind.AccessPoint => L.T(n.Wireless ? "Kind_Repeater" : "Kind_AccessPoint"),
         NodeKind.Router => L.T("Kind_Router"),
         NodeKind.Switch or NodeKind.ManagedSwitch => L.T("Kind_Switch"),
         NodeKind.Internet => "Internet",
