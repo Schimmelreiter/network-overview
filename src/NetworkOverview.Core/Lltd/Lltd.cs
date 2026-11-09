@@ -745,7 +745,7 @@ namespace NetworkOverview.Core.Lltd
             foreach (string m in resp)
             {
                 if (Cancel) break;
-                if (CanObserve(m)) observers.Add(m);
+                if (CanObserve(m, resp)) observers.Add(m);
                 else { L("cannot observe: " + m); NonObservers.Add(m); }
             }
 
@@ -849,7 +849,46 @@ namespace NetworkOverview.Core.Lltd
 
         // The responder learns a test address X (Train from X), then the mapper sends a probe to X.
         // The probe is switched to the responder's port; it must appear in its sees-list.
-        bool CanObserve(string mac)
+        // Self-test like a real round: X is first learned towards the mapper (broadcast Train),
+        // then the candidate trains X towards another responder (the helper), and the helper sends
+        // a probe to X. The candidate must see it. A probe of the mapper itself is not enough:
+        // set-top boxes with an internal switch (DSA, e.g. Vu+ Ultimo4K) see it when X was never
+        // learned from the wire, but drop the probes of other responders in every real round.
+        // Without another responder the old test (probe from the mapper) is used.
+        bool CanObserve(string mac, List<string> resp)
+        {
+            List<string> helpers = new List<string>();
+            foreach (string m in resp) if (m != mac && !wirelessSet.Contains(m)) helpers.Add(m);
+            if (helpers.Count == 0) foreach (string m in resp) if (m != mac) helpers.Add(m);
+            if (helpers.Count == 0) return CanObserveFromMapper(mac);
+
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                string h = helpers[attempt % helpers.Count];
+                byte[] X = NextSpoof();
+                string xs = Fr.Str(X, 0);
+                for (int i = 0; i < 2; i++) IO.Send(Fr.Build(Fr.TOS_TOPO, Fr.F_TRAIN, Fr.Bcast, X, Fr.Bcast, me, 0, 0));
+                List<EmitDesc> t = new List<EmitDesc>();
+                t.Add(new EmitDesc(0, (byte)LearnPauseMs, X, Fr.Mac(h)));
+                t.Add(new EmitDesc(0, 5, X, Fr.Mac(h)));
+                if (!EmitAcked(mac, t)) continue;
+                for (int i = 0; i < 2; i++)
+                {
+                    EmitSingle(h, new EmitDesc(1, (byte)LearnPauseMs, Fr.Mac(h), X));
+                    Pump(LearnPauseMs + 100);
+                }
+                mapperSeen.Clear();
+                bool ok;
+                foreach (string e in Query(mac, out ok))
+                {
+                    string[] p = e.Split('|');
+                    if (p[0] == h && p[1] == xs) return true;
+                }
+            }
+            return false;
+        }
+
+        bool CanObserveFromMapper(string mac)
         {
             for (int attempt = 0; attempt < 2; attempt++)
             {

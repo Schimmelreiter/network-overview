@@ -17,6 +17,7 @@ var tests = new List<(string Name, Action Body)>
     ("Topology: 3% loss per hop", () => TopologyTests.Run(0.03, true, 2)),
     ("Topology: wireless mapper uses wired root", () => TopologyTests.Run(0.0, false, 3)),
     ("Topology: responder that cannot observe is not used as observer", TopologyTests.DeafResponder),
+    ("Topology: responder behind an internal switch is not used as observer", TopologyTests.EmbeddedSwitchResponder),
     ("Model + layout: merge sources, no crossings", ModelTests.MergeAndLayout),
     ("Layout: wireless group below wired switch (issue screenshot)", ModelTests.WirelessBelowWired),
     ("mDNS: build and parse packets", MiscTests.MdnsRoundTrip),
@@ -142,6 +143,21 @@ static partial class TopologyTests
             string.Join("; ", job.Rounds.Where(r => !r.Valid).Select(r => r.C + "/" + r.D)));
         string expected = "{apl1,w1}\n  APcpu\n  apl1\n  w1\n{n1a,n1b,r1}\n  {n1a,n1b}\n    N1mgmt\n    n1a\n    n1b\n  GW\n  r1\n{n2a}\n  N2mgmt\n  n2a\nM\nu1\nu2\nu3\n";
         Assert.Equal(expected, t.Describe(job.Tree), "tree with deaf responder");
+    }
+
+    // Like the Vu+ Ultimo4K: sees probes of the mapper to a fresh test address, but not the probes
+    // of other responders in a real round (the internal switch learned X from the wire before).
+    public static void EmbeddedSwitchResponder()
+    {
+        var t = new TestNet(0.0, true, 4);
+        t.H["u2"].EmbeddedSwitch = true;
+        var job = t.Map(true);
+        Assert.True(job.NonObservers.Contains(t.Mac("u2")), "u2 detected as non-observer");
+        Assert.True(!job.Rounds.Any(r => r.C == t.Mac("u2")), "u2 never used as observer");
+        Assert.True(job.Rounds.All(r => r.Valid || r.Confirmed || r.DIsExtra), "no invalid responder rounds: " +
+            string.Join("; ", job.Rounds.Where(r => !r.Valid).Select(r => r.C + "/" + r.D)));
+        string expected = "{apl1,w1}\n  APcpu\n  apl1\n  w1\n{n1a,n1b,r1}\n  {n1a,n1b}\n    N1mgmt\n    n1a\n    n1b\n  GW\n  r1\n{n2a}\n  N2mgmt\n  n2a\nM\nu1\nu2\nu3\n";
+        Assert.Equal(expected, t.Describe(job.Tree), "tree with embedded-switch responder");
     }
 }
 
