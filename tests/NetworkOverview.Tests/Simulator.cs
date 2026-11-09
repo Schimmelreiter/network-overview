@@ -18,6 +18,7 @@ namespace NetworkOverview.Tests
         // forwarded back to the wire and never reaches the CPU.
         public bool EmbeddedSwitch;
         public HashSet<string> WireLearned = new HashSet<string>();
+        public int ProbeBudget = -1;     // >= 0: records only this many probes, drops all later ones
         public List<SimNode> Links = new List<SimNode>();
         public Dictionary<string, SimNode> Fdb = new Dictionary<string, SimNode>();
         // responder state
@@ -140,6 +141,7 @@ namespace NetworkOverview.Tests
             }
             if (fn == Fr.F_RESET && forMe) { if (tos == 0) { h.Command = false; h.AckedTopo = false; h.Sees.Clear(); h.NextSeq = 0; } else h.AckedQuick = false; return; }
             if (!h.Command || tos != 0) return;
+            if (fn == Fr.F_PROBE && h.ProbeBudget >= 0 && h.ProbeBudget-- == 0) { h.ProbeBudget = 0; return; }
             if (fn == Fr.F_PROBE) { h.Sees.Add(rs + "|" + Fr.Str(f, 6) + "|" + dst); return; }
             if (!forMe || rs != h.Mapper) return;
             if (fn == Fr.F_CHARGE) { h.LastResp = null; h.LastSeq = -1; return; }

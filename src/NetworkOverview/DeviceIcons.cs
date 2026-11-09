@@ -39,6 +39,7 @@ public static class DeviceIcons
             case DeviceType.GoogleDisplay: StandDisplay(g, x, y, t); break;
             case DeviceType.Chromecast: Disc(g, x, y, t); break;
             case DeviceType.HeatingController: Thermostat(g, x, y, t); break;
+            case DeviceType.Receiver: Receiver(g, x, y, t); break;
             default: Monitor(g, x, y, grey, !n.Lltd && !n.IsSelf && n.Name.Length == 0, t); break;
         }
         if (n.Wireless) Bars(g, x, y, t);
@@ -343,6 +344,20 @@ public static class DeviceIcons
         using (var fb = new SolidBrush(Color.FromArgb(255, 160, 40))) g.FillPath(fb, flame);
         using var dot = new SolidBrush(Color.FromArgb(150, 150, 150));
         g.FillEllipse(dot, R(x - 2, y + 13, 4, 4));
+    }
+
+    /// <summary>Flat TV receiver / set-top box with a front display and a standby LED.</summary>
+    public static void Receiver(Graphics g, float x, float y, Theme t)
+    {
+        Box(g, R(x - 25, y - 9, 50, 18), 3, Color.FromArgb(70, 70, 76), Color.FromArgb(28, 28, 32), t);
+        using (var disp = new SolidBrush(Color.FromArgb(12, 30, 40))) g.FillRectangle(disp, R(x - 8, y - 4, 18, 8));
+        using (var seg = new SolidBrush(Color.FromArgb(70, 200, 255)))
+            for (int i = 0; i < 4; i++) g.FillRectangle(seg, R(x - 6 + i * 4.2f, y - 2, 2.8f, 4));
+        using (var led = new SolidBrush(Color.FromArgb(230, 60, 50))) g.FillEllipse(led, R(x + 16, y - 1.5f, 3, 3));
+        using (var slot = new Pen(Color.FromArgb(110, 110, 118), 1.2f)) g.DrawLine(slot, x - 21, y, x - 12, y);
+        using var foot = new SolidBrush(Color.FromArgb(40, 40, 44));
+        g.FillRectangle(foot, R(x - 21, y + 9, 6, 2));
+        g.FillRectangle(foot, R(x + 15, y + 9, 6, 2));
     }
 
     /// <summary>Small round streaming dongle with cable (Chromecast style).</summary>

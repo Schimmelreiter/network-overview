@@ -300,8 +300,9 @@ public static class ModelBuilder
             {
                 var kids = m.ChildrenOf(s.Key).ToList();
                 if (kids.Count == 0) { m.Remove(s.Key); changed = true; }
-                else if (kids.Count == 1 && s.Parent != null && kids[0].Kind == NodeKind.Switch)
+                else if (kids.Count == 1 && s.Parent != null && s.Inferred)
                 {
+                    // a switch with one child is not detectable; it remains when its devices moved to their AP
                     kids[0].Parent = s.Parent; m.Remove(s.Key); changed = true;
                 }
             }

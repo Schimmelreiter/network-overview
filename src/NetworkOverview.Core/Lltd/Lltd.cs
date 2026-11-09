@@ -711,11 +711,32 @@ namespace NetworkOverview.Core.Lltd
                 // Control probe: d lies on the path c..d itself, so its probe MUST arrive at c
                 rr.Valid = !rr.Failed && !rr.Flooded && rr.Missing.Count == 0 && (extra || rr.AtC.Contains(d));
                 L("round c=" + c + " d=" + d + (extra ? " (x)" : "") + " atC=" + rr.AtC.Count + " atRoot=" + rr.AtRoot.Count +
-                  " missing=" + rr.Missing.Count + (rr.Flooded ? " FLOOD" : "") + (rr.Valid ? "" : " INVALID"));
+                  " missing=" + rr.Missing.Count + (rr.Flooded ? " FLOOD" : "") + (rr.Valid ? "" : " INVALID") +
+                  " C[" + Names(rr.AtC) + "] R[" + Names(rr.AtRoot) + "]");
                 if (rr.Valid) break;
             }
             if (rr != null && !extra) rr.AtC.Remove(d);
             return rr;
+        }
+
+        string Names(List<string> macs)
+        {
+            List<string> r = new List<string>();
+            foreach (string m in macs)
+            {
+                LltdHost h;
+                r.Add(hosts.TryGetValue(m, out h) && !string.IsNullOrEmpty(h.Name) ? h.Name : m.Substring(9));
+            }
+            r.Sort(StringComparer.Ordinal);
+            return string.Join(",", r.ToArray());
+        }
+
+        // An observer whose sees-list stays empty while the probes addressed to it vanish
+        // (they were switched to its port, but it did not record them).
+        static bool LostAtObserver(RoundResult rr, int probers)
+        {
+            return rr != null && !rr.Valid && !rr.Flooded && !rr.Failed && rr.AtC.Count == 0 && rr.Missing.Count > 0
+                   && rr.Missing.Count * 2 >= probers;
         }
 
         void TopologyPhase()
@@ -780,16 +801,34 @@ namespace NetworkOverview.Core.Lltd
             L("plan: " + plan.Count + " rounds, root=" + RootMac);
 
             Dictionary<string, int> missCount = new Dictionary<string, int>();
+            Dictionary<string, int> lostAt = new Dictionary<string, int>();
             foreach (string[] step in plan)
             {
                 if (Cancel || clock.Elapsed.TotalSeconds > MaxSeconds) { Partial = true; break; }
                 RoundsDone = RoundsDone + 1;
                 Progress = "round";
                 bool extra = step[2] == "x";
-                if (!all.Contains(step[0]) || (!extra && !all.Contains(step[1]))) continue;
+                if (!all.Contains(step[0]) || !wired.Contains(step[0]) || (!extra && !all.Contains(step[1]))) continue;
                 RoundResult rr = RoundChecked(root, step[0], step[1], extra, all);
                 if (rr == null) continue;
                 Rounds.Add(rr);
+                if (LostAtObserver(rr, all.Count - 1))
+                {
+                    // The self-test only checks probes sent by the mapper. A responder that loses probes from
+                    // other senders is demoted: its rounds so far are discarded, its later rounds skipped.
+                    int lc;
+                    lostAt.TryGetValue(step[0], out lc);
+                    lostAt[step[0]] = ++lc;
+                    if (lc >= 2)
+                    {
+                        wired.Remove(step[0]);
+                        if (!NonObservers.Contains(step[0])) NonObservers.Add(step[0]);
+                        Rounds.RemoveAll(delegate (RoundResult x) { return x.C == step[0]; });
+                        L("observer demoted: " + step[0] + " (probes from other responders are not recorded)");
+                    }
+                    continue;    // not the probers' fault: no re-association
+                }
+                lostAt[step[0]] = 0;
                 // re-associate or drop responders that repeatedly fail to send probes
                 foreach (string m in new List<string>(all))
                 {

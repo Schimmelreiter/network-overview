@@ -32,6 +32,7 @@ internal static class Demo
         gs.Managed = true; gs.Model = "GS108Ev3";
         Add("ha", "homeassistant", "gs1", type: DeviceType.Computer, ip: "192.168.75.20", lltd: true);
         Add("tv", "Wohnzimmer-TV", "gs1", type: DeviceType.Tv, ip: "192.168.75.40");
+        Add("vu", "ultimo4k", "gs1", type: DeviceType.Receiver, ip: "192.168.75.22", lltd: true);
         var ap = Add("ap", "AP-Flur", "big", NodeKind.AccessPoint, ip: "192.168.75.6");
         ap.Ssid = "HomeNet"; ap.HasWifiClients = true;
         Add("show", "Echo-Show-Kueche", "ap", type: DeviceType.EchoShow, ip: "192.168.75.150", wifi: true);
