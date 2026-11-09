@@ -40,6 +40,7 @@ public static class DeviceIcons
             case DeviceType.Chromecast: Disc(g, x, y, t); break;
             case DeviceType.HeatingController: Thermostat(g, x, y, t); break;
             case DeviceType.Receiver: Receiver(g, x, y, t); break;
+            case DeviceType.AirConditioner: AirConditioner(g, x, y, t); break;
             default: Monitor(g, x, y, grey, !n.Lltd && !n.IsSelf && n.Name.Length == 0, t); break;
         }
         if (n.Wireless) Bars(g, x, y, t);
@@ -344,6 +345,20 @@ public static class DeviceIcons
         using (var fb = new SolidBrush(Color.FromArgb(255, 160, 40))) g.FillPath(fb, flame);
         using var dot = new SolidBrush(Color.FromArgb(150, 150, 150));
         g.FillEllipse(dot, R(x - 2, y + 13, 4, 4));
+    }
+
+    /// <summary>Wall-mounted split air conditioner with louvre and cold air flow.</summary>
+    public static void AirConditioner(Graphics g, float x, float y, Theme t)
+    {
+        Box(g, R(x - 26, y - 16, 52, 20), 6, Color.White, Color.FromArgb(214, 214, 218), t);
+        using (var slot = new SolidBrush(Color.FromArgb(70, 72, 78))) g.FillRectangle(slot, R(x - 21, y - 1, 42, 3));
+        using (var led = new SolidBrush(Color.FromArgb(60, 180, 255))) g.FillEllipse(led, R(x + 17, y - 12, 3, 3));
+        using var air = new Pen(Color.FromArgb(90, 170, 240), 2f);
+        for (int i = -1; i <= 1; i++)
+        {
+            float ax = x + i * 13;
+            g.DrawBezier(air, ax, y + 6, ax - 4, y + 10, ax + 4, y + 14, ax, y + 19);
+        }
     }
 
     /// <summary>Flat TV receiver / set-top box with a front display and a standby LED.</summary>

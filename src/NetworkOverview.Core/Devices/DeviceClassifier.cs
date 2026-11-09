@@ -25,6 +25,7 @@ public enum DeviceType
     GoogleDevice,
     HeatingController,
     Receiver,
+    AirConditioner,
 }
 
 /// <summary>Vendor lookup by MAC prefix (IEEE MA-L registry, embedded).</summary>
@@ -73,7 +74,7 @@ public static class DeviceClassifier
 {
     static bool Has(string? s, string pattern) => s != null && Regex.IsMatch(s, pattern, RegexOptions.IgnoreCase);
 
-    public static DeviceType Classify(string vendor, string? name, MdnsHost? mdns, bool lltdResponder, string? upnpModel = null)
+    public static DeviceType Classify(string vendor, string? name, MdnsHost? mdns, bool lltdResponder, string? upnpModel = null, bool? wireless = null)
     {
         string names = string.Join(" ", new[] { name, mdns?.FriendlyName(), mdns?.HostName }.Where(s => !string.IsNullOrEmpty(s)));
         string model = string.Join(" ", new[] { mdns?.Model(), upnpModel }.Where(s => !string.IsNullOrEmpty(s)));
@@ -99,6 +100,11 @@ public static class DeviceClassifier
         if (Has(names, @"buderus|junkers|logamatic|easycontrol|\btc100|\bkm[23]00|\bmx300|ems[-_ ]?esp|vaillant|sensonet|viessmann|vitoconnect|wolf[-_ ]?link|heizung|thermostat|chaudi[eè]re|caldera"))
             return DeviceType.HeatingController;
 
+        // --- air conditioners (Wi-Fi adapters often carry the MAC of a module maker, so the name counts too) ---
+        if (Has(vendor, @"^(Fujitsu General|GD Midea Air-Conditioning|Gree Electric|Daikin)")
+            || Has(names, @"\bklima|aircon|air[-_ ]?condition|airstage|\bfgl\b|daikin|climatiseur|\bclima\b|aire[-_ ]?acondicionado"))
+            return DeviceType.AirConditioner;
+
         // --- TV receivers / set-top boxes (Enigma2 boxes and others: satellite, cable, terrestrial, IPTV) ---
         // Checked before the generic rules: these boxes announce SMB/FTP and run LLTD responders like computers.
         if (Has(vendor, @"^(Marusys|Impex-Sat|Iffu|Dream Property|Xtrend|Edision|AB-COM|Air Digital|TechniSat|Kathrein|HUMAX Co)")
@@ -115,7 +121,9 @@ public static class DeviceClassifier
             if (Has(names, @"spot")) return DeviceType.EchoSpot;
             if (Has(names, @"fire|aft[a-z]|stick")) return DeviceType.FireTv;
             if (Has(names, @"echo|alexa|dot") || echoLike) return DeviceType.EchoDot;
-            if (amazon) return DeviceType.AmazonDevice;
+            // Echo devices have no Ethernet port: an Amazon device on a cable is a Fire TV with LAN adapter
+            if (wireless == false) return DeviceType.FireTv;
+            return DeviceType.AmazonDevice;
         }
 
         // --- Google ---

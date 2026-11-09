@@ -147,6 +147,7 @@ public static class L
         ["DT_GoogleDevice"] = new[] { "Google-Gerät", "Google device", "Dispositivo de Google", "Appareil Google" },
         ["DT_HeatingController"] = new[] { "Heizungsregler", "Heating controller", "Controlador de calefacción", "Régulateur de chauffage" },
         ["DT_Receiver"] = new[] { "Receiver", "Receiver", "Receptor", "Récepteur" },
+        ["DT_AirConditioner"] = new[] { "Klimagerät", "Air conditioner", "Aire acondicionado", "Climatiseur" },
         ["Kind_Switch"] = new[] { "Switch", "Switch", "Switch", "Switch" },
         ["Kind_AccessPoint"] = new[] { "Zugangspunkt", "Access point", "Punto de acceso", "Point d’accès" },
         ["Kind_Repeater"] = new[] { "WLAN-Repeater", "Wi-Fi repeater", "Repetidor Wi-Fi", "Répéteur Wi-Fi" },
