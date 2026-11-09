@@ -421,6 +421,16 @@ static class MiscTests
         C(DeviceType.Printer, "Brother Industries, LTD.", "BRW123");
         C(DeviceType.Computer, "", "QUATTRO");
         C(DeviceType.AirConditioner, "", "Klima-SZ");
+        C(DeviceType.Camera, "", "Cam-SZ");
+        C(DeviceType.Camera, "Espressif Inc.", "Cam-Gaszaehler");
+        C(DeviceType.Camera, "TP-Link Systems Inc", "C211");
+        C(DeviceType.Camera, "", "wansview-q5");
+        C(DeviceType.Computer, "", "Camino-PC");
+        DeviceType M(string mac, string name) => DeviceClassifier.Classify(VendorDb.Lookup(mac), name, null, false, null, true, mac);
+        Assert.Equal(DeviceType.Camera, M("4c:2f:7b:c7:e4:f5", "Wichs-Cam"), "Wansview (AltoBeam)");
+        Assert.Equal(DeviceType.Camera, M("e0:09:bf:67:37:eb", ""), "Wansview (Tong Bo Wei) without name");
+        Assert.Equal(DeviceType.AirConditioner, M("3c:e1:a1:9a:62:80", "X-Buro-Mitte"), "Fujitsu General Wi-Fi adapter");
+        Assert.Equal(DeviceType.Iot, M("00:1c:c2:b4:d6:c3", "Luefter-Bad"), "Dreo fan heater");
         Assert.Equal(DeviceType.FireTv, DeviceClassifier.Classify("", "Amazon-WZ", null, false, null, false), "wired Amazon device");
         Assert.Equal(DeviceType.AmazonDevice, DeviceClassifier.Classify("", "Amazon-WZ", null, false, null, true), "Amazon device via Wi-Fi");
         C(DeviceType.AirConditioner, "Espressif Inc.", "Klima-WZ");

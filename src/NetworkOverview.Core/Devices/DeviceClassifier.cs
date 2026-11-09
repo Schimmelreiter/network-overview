@@ -26,6 +26,7 @@ public enum DeviceType
     HeatingController,
     Receiver,
     AirConditioner,
+    Camera,
 }
 
 /// <summary>Vendor lookup by MAC prefix (IEEE MA-L registry, embedded).</summary>
@@ -74,7 +75,7 @@ public static class DeviceClassifier
 {
     static bool Has(string? s, string pattern) => s != null && Regex.IsMatch(s, pattern, RegexOptions.IgnoreCase);
 
-    public static DeviceType Classify(string vendor, string? name, MdnsHost? mdns, bool lltdResponder, string? upnpModel = null, bool? wireless = null)
+    public static DeviceType Classify(string vendor, string? name, MdnsHost? mdns, bool lltdResponder, string? upnpModel = null, bool? wireless = null, string? mac = null)
     {
         string names = string.Join(" ", new[] { name, mdns?.FriendlyName(), mdns?.HostName }.Where(s => !string.IsNullOrEmpty(s)));
         string model = string.Join(" ", new[] { mdns?.Model(), upnpModel }.Where(s => !string.IsNullOrEmpty(s)));
@@ -99,6 +100,11 @@ public static class DeviceClassifier
         // --- heating (Bosch/Buderus/Junkers and others); checked before generic IoT rules ---
         if (Has(names, @"buderus|junkers|logamatic|easycontrol|\btc100|\bkm[23]00|\bmx300|ems[-_ ]?esp|vaillant|sensonet|viessmann|vitoconnect|wolf[-_ ]?link|heizung|thermostat|chaudi[eè]re|caldera"))
             return DeviceType.HeatingController;
+
+        // --- IP cameras (Tapo, Wansview, ESP32-CAM meter readers, ...) ---
+        if (Has(names, @"\bcam\b|\bcam[-_]|[-_]cam\b|kamera|camera|c[aá]mara|cam[eé]ra|webcam|\bipc\b|tapo[-_ ]?c\d|wansview|doorbell|t[üu]rklingel")
+            || (Has(vendor, @"^TP-Link") && Has(names, @"\bc[1-5]\d{2}\b")))
+            return DeviceType.Camera;
 
         // --- air conditioners (Wi-Fi adapters often carry the MAC of a module maker, so the name counts too) ---
         if (Has(vendor, @"^(Fujitsu General|GD Midea Air-Conditioning|Gree Electric|Daikin)")
@@ -165,6 +171,11 @@ public static class DeviceClassifier
         if (Has(vendor, @"Espressif|Shelly|Tuya|Allterco|Sonoff|Itead") || Has(names, @"\besp|shelly|tasmota|sonoff|tuya|zigbee|homematic|homepilot"))
             return lltdResponder ? DeviceType.Computer : DeviceType.Iot;
         if (Has(vendor, @"Sonos|Roku|Bose|Yamaha|Denon|Harman") || Has(names, @"sonos|roku|bose|yamaha|denon")) return DeviceType.MediaPlayer;
+        // --- weak hints: Wi-Fi module makers that are typical for one kind of device ---
+        string prefix = mac != null && mac.Length >= 8 ? mac[..8].ToLowerInvariant() : "";
+        if (prefix == "3c:e1:a1") return DeviceType.AirConditioner;                 // USI module of the Fujitsu General (FGL) Wi-Fi adapter
+        if (Has(vendor, @"^(AltoBeam|SHENZHEN TONG BO WEI)")) return DeviceType.Camera;  // Wi-Fi of Wansview and other IP cameras
+        if (prefix == "00:1c:c2" || Has(names, @"dreo|heizl[üu]fter|l[üu]fter|ventilator")) return DeviceType.Iot;  // Dreo fan heaters
         return DeviceType.Computer;
     }
 }
