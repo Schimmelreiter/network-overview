@@ -168,7 +168,7 @@ public static class DeviceClassifier
         if (Has(vendor, @"Hewlett Packard|HP Inc|Brother|Seiko Epson|Canon|Kyocera|Lexmark|Xerox|Ricoh") || Has(names, @"printer|drucker|imprimante|impresora|\bmfc|laserjet|officejet|deskjet"))
             return DeviceType.Printer;
         if (Has(vendor, @"Synology|QNAP|Western Digital|Buffalo") || Has(names, @"\bnas\b|diskstation|synology|qnap")) return DeviceType.Nas;
-        if (Has(vendor, @"Espressif|Shelly|Tuya|Allterco|Sonoff|Itead") || Has(names, @"\besp|shelly|tasmota|sonoff|tuya|zigbee|homematic|homepilot"))
+        if (Has(vendor, @"Espressif|Shelly|Tuya|Allterco|Sonoff|Itead|Zengge") || Has(names, @"\besp|shelly|tasmota|sonoff|tuya|zigbee|homematic|homepilot|magic[-_ ]?home|x[-_ ]?sense|rauchmelder|landroid|\bworx|m[äa]h[-_ ]?roboter|mower"))
             return lltdResponder ? DeviceType.Computer : DeviceType.Iot;
         if (Has(vendor, @"Sonos|Roku|Bose|Yamaha|Denon|Harman") || Has(names, @"sonos|roku|bose|yamaha|denon")) return DeviceType.MediaPlayer;
         // --- weak hints: Wi-Fi module makers that are typical for one kind of device ---
@@ -176,6 +176,7 @@ public static class DeviceClassifier
         if (prefix == "3c:e1:a1") return DeviceType.AirConditioner;                 // USI module of the Fujitsu General (FGL) Wi-Fi adapter
         if (Has(vendor, @"^(AltoBeam|SHENZHEN TONG BO WEI)")) return DeviceType.Camera;  // Wi-Fi of Wansview and other IP cameras
         if (prefix == "00:1c:c2" || Has(names, @"dreo|heizl[üu]fter|l[üu]fter|ventilator")) return DeviceType.Iot;  // Dreo fan heaters
+        if (prefix == "7c:fa:80") return DeviceType.Iot;                           // Fulian Wi-Fi module (Worx Landroid mower)
         return DeviceType.Computer;
     }
 }
