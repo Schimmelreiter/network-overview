@@ -120,8 +120,16 @@ The sets of devices whose probes arrive at *c* form a hierarchy – this is the 
 without LLTD are placed by using them as destination *d*. Control probes, flood detection,
 repetitions and confirmation rounds make the result robust against lost frames.
 
+Some managed switches (e.g. Netgear Plus) flood frames addressed to their own management address
+to all ports. Their position is therefore checked separately: a responder sends a probe to the
+management address, and the responders that receive it are the ones attached directly to that switch.
+Responders that do not record probes reliably (e.g. behind an internal switch of a set-top box) are
+only used as senders. OpenWrt access points connected to another OpenWrt AP via Wi-Fi are shown as
+Wi-Fi repeaters below that AP.
+
 Limits: a switch with only a single device behind it cannot be detected (Windows 7 could not
-either), unless it has its own MAC address such as managed switches. Wi-Fi clients cannot send
+either), unless it has its own MAC address such as managed switches. The same applies if the only
+responder behind a switch cannot act as observer. Wi-Fi clients cannot send
 frames with foreign sender addresses; they are assigned via OpenWrt data or their BSSID.
 
 ## Building

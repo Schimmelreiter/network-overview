@@ -313,6 +313,7 @@ namespace NetworkOverview.Core.Lltd
         public int LearnPauseMs = 120;
         public List<string> ExtraMacs = new List<string>();
         public List<string> WirelessMacs = new List<string>();
+        public List<string> SwitchMacs = new List<string>();     // management addresses of (possible) switches
         public IFrameIO IO = null;
 
         // Outputs
@@ -329,6 +330,9 @@ namespace NetworkOverview.Core.Lltd
         public List<TNode> Tree = new List<TNode>();
         public List<string> Log = new List<string>();
         public List<string> NonObservers = new List<string>();
+        // switch management address -> responders (and the root) directly attached to that switch,
+        // for switches that flood frames addressed to their own management address
+        public Dictionary<string, List<string>> FloodHosts = new Dictionary<string, List<string>>();
 
         // Internal state
         byte[] me;
@@ -862,7 +866,62 @@ namespace NetworkOverview.Core.Lltd
                 Rounds.Add(again);
                 L("extra " + kv.Key + " not confirmed");
             }
-            Tree = TopoBuilder.Build(all, RootMac, Rounds);
+            // Switches that flood frames to their own management address (Netgear Plus) are found one level
+            // too high by the rounds above. A probe to that address reaches exactly the hosts on that switch.
+            foreach (string x in ExtraMacs)
+            {
+                string m = x.ToLowerInvariant();
+                if (Cancel || clock.Elapsed.TotalSeconds > MaxSeconds || wired.Count == 0) break;
+                if (!SwitchMacs.Exists(delegate (string y) { return y.ToLowerInvariant() == m; })) continue;
+                List<string> f = FloodTest(m, wired, all);
+                if (f.Count == 0) continue;
+                FloodHosts[m] = f;
+                L("flood " + m + ": " + Names(f));
+            }
+            Tree = TopoBuilder.Build(all, RootMac, Rounds, FloodHosts);
+        }
+
+        // A responder sends a probe to the management address m. If m's switch floods it, every
+        // responder directly attached to that switch records it (and the mapper, if it is attached there).
+        // A second probe from one of those hosts also catches the first sender.
+        List<string> FloodTest(string m, List<string> senders, List<string> all)
+        {
+            HashSet<string> seen = new HashSet<string>();
+            string s = senders[0];
+            for (int pass = 0; pass < 2 && s != null; pass++)
+            {
+                bool ok;
+                foreach (string h in all) if (h != s) Query(h, out ok);     // empty the sees-lists
+                mapperSeen.Clear();
+                for (int i = 0; i < 2; i++)
+                {
+                    EmitSingle(s, new EmitDesc(1, (byte)LearnPauseMs, Fr.Mac(s), Fr.Mac(m)));
+                    Pump(LearnPauseMs + 150);
+                }
+                foreach (string h in all)
+                {
+                    if (h == s) continue;
+                    foreach (string e in Query(h, out ok))
+                    {
+                        string[] p = e.Split('|');
+                        if (p[0] == s && p[1] == m) { seen.Add(h); break; }
+                    }
+                }
+                foreach (string e in mapperSeen)
+                {
+                    string[] p = e.Split('|');
+                    if (p[0] == s && p[1] == m) seen.Add(meStr);
+                }
+                mapperSeen.Clear();
+                string next = null;
+                foreach (string h in seen) if (h != s && senders.Contains(h)) { next = h; break; }
+                if (next == null) break;
+                if (pass == 0) seen.Add("?" + s);   // placeholder: s itself is confirmed by the second probe
+                s = next;
+            }
+            List<string> r = new List<string>();
+            foreach (string h in seen) if (!h.StartsWith("?")) r.Add(h);
+            return r;
         }
 
         // Checks that a responder is in the session (answers Query); re-associates otherwise
@@ -970,8 +1029,10 @@ namespace NetworkOverview.Core.Lltd
             return string.Join(",", c.ToArray());
         }
 
-        public static List<TNode> Build(List<string> hostsAll, string rootHost, List<RoundResult> rounds)
+        public static List<TNode> Build(List<string> hostsAll, string rootHost, List<RoundResult> rounds,
+                                        Dictionary<string, List<string>> flood = null)
         {
+            if (flood == null) flood = new Dictionary<string, List<string>>();
             HashSet<string> U = new HashSet<string>(hostsAll);
             // clusters from responder pairs
             Dictionary<string, List<string>> clusters = new Dictionary<string, List<string>>();
@@ -1043,6 +1104,7 @@ namespace NetworkOverview.Core.Lltd
             int extraSw = 0;
             foreach (KeyValuePair<string, List<string>> kv in best)
             {
+                if (flood.ContainsKey(kv.Key)) continue;     // placed below
                 HashSet<string> R = new HashSet<string>(kv.Value);
                 string parent = null;
                 for (int i = 0; i < sets.Count; i++)
@@ -1077,6 +1139,50 @@ namespace NetworkOverview.Core.Lltd
                         parent = n.Id;
                     }
                 }
+                TNode e = new TNode();
+                e.Id = "H:" + kv.Key; e.Mac = kv.Key; e.Parent = parent;
+                nodes.Add(e);
+            }
+            // management address of a flooding switch: the switch is the one its directly attached hosts hang off
+            foreach (KeyValuePair<string, List<string>> kv in flood)
+            {
+                HashSet<string> parents = new HashSet<string>();
+                foreach (string h in kv.Value)
+                {
+                    TNode hn = nodes.Find(delegate (TNode t) { return !t.IsSwitch && t.Mac == h; });
+                    if (hn != null) parents.Add(hn.Parent);
+                }
+                if (parents.Count == 0) continue;
+                string parent = null;
+                if (parents.Count == 1)
+                {
+                    foreach (string p in parents) parent = p;
+                    // the flooded hosts are only part of that switch's direct hosts: the managed switch sits below it
+                    List<string> direct = new List<string>();
+                    foreach (TNode t in nodes) if (!t.IsSwitch && t.Parent == parent && (U.Contains(t.Mac) || t.Mac == rootHost)) direct.Add(t.Mac);
+                    HashSet<string> fs = new HashSet<string>(kv.Value);
+                    bool subset = true;
+                    foreach (string h in fs) if (!direct.Contains(h)) subset = false;
+                    if (subset && fs.Count < direct.Count)
+                    {
+                        extraSw++;
+                        TNode n = new TNode();
+                        HashSet<string> R = new HashSet<string>();
+                        foreach (string h in fs) if (U.Contains(h)) R.Add(h);
+                        n.Id = "X" + extraSw; n.IsSwitch = true; n.Members = new List<string>(R); n.Parent = parent;
+                        foreach (TNode t in nodes) if (!t.IsSwitch && t.Parent == parent && fs.Contains(t.Mac)) t.Parent = n.Id;
+                        nodes.Insert(sets.Count, n);
+                        sets.Add(R);
+                        parent = n.Id;
+                    }
+                }
+                else
+                {
+                    HashSet<string> F = new HashSet<string>();
+                    foreach (string h in kv.Value) if (U.Contains(h)) F.Add(h);
+                    parent = parents.Contains("S0") || F.Count == 0 ? "S0" : SmallestContaining(nodes, sets, F, -1);
+                }
+                nodes.RemoveAll(delegate (TNode t) { return !t.IsSwitch && t.Mac == kv.Key; });
                 TNode e = new TNode();
                 e.Id = "H:" + kv.Key; e.Mac = kv.Key; e.Parent = parent;
                 nodes.Add(e);

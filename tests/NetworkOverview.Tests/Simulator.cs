@@ -18,6 +18,7 @@ namespace NetworkOverview.Tests
         // forwarded back to the wire and never reaches the CPU.
         public bool EmbeddedSwitch;
         public HashSet<string> WireLearned = new HashSet<string>();
+        public string FloodMac;          // switch: floods frames to this (own management) address out of all ports
         public int ProbeBudget = -1;     // >= 0: records only this many probes, drops all later ones
         public List<SimNode> Links = new List<SimNode>();
         public Dictionary<string, SimNode> Fdb = new Dictionary<string, SimNode>();
@@ -70,6 +71,7 @@ namespace NetworkOverview.Tests
                     to.Fdb[src] = from;
                     SimNode outp;
                     bool bc = (f[0] & 1) != 0;
+                    if (!bc && dst == to.FloodMac) bc = true;
                     if (!bc && to.Fdb.TryGetValue(dst, out outp))
                     {
                         if (outp != from) q.Enqueue(new object[] { to, outp, f });

@@ -125,8 +125,16 @@ Switch-Baum. Geräte ohne LLTD werden eingeordnet, indem sie als Ziel *d* dienen
 Kontrollproben, Flutungserkennung, Wiederholungen und Bestätigungsrunden machen das Ergebnis
 robust gegen verlorene Rahmen.
 
+Manche verwalteten Switches (z. B. Netgear Plus) fluten Rahmen an ihre eigene Verwaltungsadresse an
+alle Ports. Ihre Position wird deshalb gesondert geprüft: Ein Responder sendet eine Probe an die
+Verwaltungsadresse, und die Responder, die sie empfangen, hängen direkt an diesem Switch.
+Responder, die Proben nicht zuverlässig aufzeichnen (z. B. hinter dem internen Switch eines
+Receivers), werden nur als Sender genutzt. OpenWrt-APs, die per WLAN mit einem anderen OpenWrt-AP
+verbunden sind, erscheinen als WLAN-Repeater unter diesem AP.
+
 Grenzen: Ein Switch, hinter dem nur ein einziges Gerät hängt, ist nicht erkennbar (auch nicht für
-Windows 7), es sei denn, er hat eine eigene MAC-Adresse wie verwaltete Switches. WLAN-Clients
+Windows 7), es sei denn, er hat eine eigene MAC-Adresse wie verwaltete Switches. Dasselbe gilt, wenn der
+einzige Responder hinter einem Switch nicht beobachten kann. WLAN-Clients
 können keine Rahmen mit fremder Absenderadresse senden; sie werden über OpenWrt-Daten oder ihre
 BSSID zugeordnet.
 

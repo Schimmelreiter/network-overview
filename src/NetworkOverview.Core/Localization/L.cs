@@ -149,6 +149,7 @@ public static class L
         ["DT_Receiver"] = new[] { "Receiver", "Receiver", "Receptor", "Récepteur" },
         ["Kind_Switch"] = new[] { "Switch", "Switch", "Switch", "Switch" },
         ["Kind_AccessPoint"] = new[] { "Zugangspunkt", "Access point", "Punto de acceso", "Point d’accès" },
+        ["Kind_Repeater"] = new[] { "WLAN-Repeater", "Wi-Fi repeater", "Repetidor Wi-Fi", "Répéteur Wi-Fi" },
         ["Kind_Router"] = new[] { "Router", "Router", "Router", "Routeur" },
     };
 }

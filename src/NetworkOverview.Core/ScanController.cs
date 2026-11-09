@@ -138,6 +138,8 @@ public sealed class ScanController
             };
             job.ExtraMacs.AddRange(extra);
             job.WirelessMacs.AddRange(wireless);
+            job.SwitchMacs.AddRange(nsdp.Select(x => MacUtil.Normalize(x.Mac)));
+            job.SwitchMacs.AddRange(extra.Where(x => Devices.VendorDb.Lookup(x).StartsWith("Netgear", StringComparison.OrdinalIgnoreCase)));
             Log($"LLTD: {job.ExtraMacs.Count} extra devices, {job.WirelessMacs.Count} known Wi-Fi clients");
             if (cancel) job.Cancel = true;
             job.Start();
