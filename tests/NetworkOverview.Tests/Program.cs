@@ -233,6 +233,10 @@ static class ModelTests
         var ku = new OpenWrtInfo { Target = "root@192.168.75.7", Name = "WLAN-AP-Kueche", MainMac = "80:af:ca:fb:3a:2d" };
         ku.Interfaces["br-lan"] = ku.MainMac; ku.Interfaces["phy1-sta0"] = "80:af:ca:fb:3a:2e"; ku.WifiSsid["phy0-ap0"] = "HomeNet";
         ku.Stations["02:00:00:00:00:88"] = new OpenWrtStation { Interface = "phy0-ap0", Signal = "-40" };
+        // WDS/mesh: both sides list each other; only the forwarding table tells the direction
+        ku.Stations["82:af:ca:fb:3a:73"] = new OpenWrtStation { Interface = "phy1-sta0", Signal = "-60" };
+        ku.Fdb[gw.MainMac] = "phy1-sta0";
+        sz.Fdb[gw.MainMac] = "lan1";
         var data = new ScanData
         {
             Adapter = ad, OpenWrt = { gw, sz, ku },
@@ -244,6 +248,8 @@ static class ModelTests
         var k = m.All.First(n => n.Name == "WLAN-AP-Kueche");
         Assert.Equal(m.All.First(n => n.Name == "WLAN-AP-SZ").Key, k.Parent ?? "", "repeater hangs off its AP");
         Assert.True(k.Wireless && k.Dashed, "repeater link is wireless");
+        var szn = m.All.First(n => n.Name == "WLAN-AP-SZ");
+        Assert.True(!szn.Wireless && szn.Parent != k.Key, "the wired AP is not a repeater of its repeater");
         Assert.Equal("Wi-Fi repeater", NodeText.TypeName(k), "type name");
         Assert.Equal(k.Key, m.All.First(n => n.Mac == "02:00:00:00:00:88").Parent ?? "", "repeater keeps its own clients");
     }
