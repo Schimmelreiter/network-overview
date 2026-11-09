@@ -25,6 +25,7 @@ public enum DeviceType
     GoogleDevice,
     HeatingController,
     Receiver,
+    AirConditioner,
 }
 
 /// <summary>Vendor lookup by MAC prefix (IEEE MA-L registry, embedded).</summary>
@@ -98,6 +99,11 @@ public static class DeviceClassifier
         // --- heating (Bosch/Buderus/Junkers and others); checked before generic IoT rules ---
         if (Has(names, @"buderus|junkers|logamatic|easycontrol|\btc100|\bkm[23]00|\bmx300|ems[-_ ]?esp|vaillant|sensonet|viessmann|vitoconnect|wolf[-_ ]?link|heizung|thermostat|chaudi[eè]re|caldera"))
             return DeviceType.HeatingController;
+
+        // --- air conditioners (Wi-Fi adapters often carry the MAC of a module maker, so the name counts too) ---
+        if (Has(vendor, @"^(Fujitsu General|GD Midea Air-Conditioning|Gree Electric|Daikin)")
+            || Has(names, @"\bklima|aircon|air[-_ ]?condition|airstage|\bfgl\b|daikin|climatiseur|\bclima\b|aire[-_ ]?acondicionado"))
+            return DeviceType.AirConditioner;
 
         // --- TV receivers / set-top boxes (Enigma2 boxes and others: satellite, cable, terrestrial, IPTV) ---
         // Checked before the generic rules: these boxes announce SMB/FTP and run LLTD responders like computers.

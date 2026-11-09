@@ -420,6 +420,9 @@ static class MiscTests
         C(DeviceType.MediaPlayer, "", "Yamaha");
         C(DeviceType.Printer, "Brother Industries, LTD.", "BRW123");
         C(DeviceType.Computer, "", "QUATTRO");
+        C(DeviceType.AirConditioner, "", "Klima-SZ");
+        C(DeviceType.AirConditioner, "Espressif Inc.", "Klima-WZ");
+        C(DeviceType.AirConditioner, "GD Midea Air-Conditioning Equipment Co.,Ltd.", "");
         C(DeviceType.Receiver, "Marusys", "duo2");
         C(DeviceType.Receiver, "Marusys", "ultimo4k");
         C(DeviceType.Receiver, "Impex-Sat GmbH&Co KG", "quad4k");
