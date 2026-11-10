@@ -40,6 +40,28 @@ public sealed class WlanInfo
 /// <summary>Windows network information (adapters, ARP cache, Wi-Fi) and helpers.</summary>
 public static class WindowsNet
 {
+    /// <summary>Sends a Wake-on-LAN magic packet (UDP 9 and 7) to the broadcast addresses.</summary>
+    public static void WakeOnLan(string mac, string localIp, int prefix)
+    {
+        var m = MacUtil.Normalize(mac).Split(':').Select(x => Convert.ToByte(x, 16)).ToArray();
+        if (m.Length != 6) return;
+        var packet = new byte[102];
+        for (int i = 0; i < 6; i++) packet[i] = 0xFF;
+        for (int r = 0; r < 16; r++) Array.Copy(m, 0, packet, 6 + r * 6, 6);
+        var targets = new List<System.Net.IPAddress> { System.Net.IPAddress.Broadcast };
+        if (localIp.Length > 0)
+        {
+            var b = System.Net.IPAddress.Parse(localIp).GetAddressBytes();
+            uint v = (uint)(b[0] << 24 | b[1] << 16 | b[2] << 8 | b[3]);
+            uint bc = v | ~(prefix == 0 ? 0 : uint.MaxValue << (32 - prefix));
+            targets.Add(new System.Net.IPAddress(new[] { (byte)(bc >> 24), (byte)(bc >> 16), (byte)(bc >> 8), (byte)bc }));
+        }
+        using var udp = new System.Net.Sockets.UdpClient(localIp.Length > 0 ? new System.Net.IPEndPoint(System.Net.IPAddress.Parse(localIp), 0) : new System.Net.IPEndPoint(System.Net.IPAddress.Any, 0)) { EnableBroadcast = true };
+        foreach (var t in targets)
+            foreach (var port in new[] { 9, 7 })
+                for (int i = 0; i < 3; i++) udp.Send(packet, packet.Length, new System.Net.IPEndPoint(t, port));
+    }
+
     public static List<AdapterInfo> GetAdapters()
     {
         var list = new List<(AdapterInfo, bool)>();

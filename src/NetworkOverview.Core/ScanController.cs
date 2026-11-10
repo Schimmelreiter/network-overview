@@ -1,4 +1,5 @@
 using System.Net;
+using NetworkOverview.Core.Devices;
 using NetworkOverview.Core.Discovery;
 using NetworkOverview.Core.Layout;
 using NetworkOverview.Core.Lltd;
@@ -24,11 +25,36 @@ public sealed class ScanController
     readonly List<string> log = new();
     MapperJob? job;
     volatile bool cancel;
+    readonly CancellationTokenSource fpCts = new();
+    readonly KnownDevices known = KnownDevices.Load();
 
     public void Cancel()
     {
         cancel = true;
+        fpCts.Cancel();
         if (job != null) job.Cancel = true;
+    }
+
+    static bool Reachable(string target)
+    {
+        var host = target.Contains('@') ? target[(target.LastIndexOf('@') + 1)..] : target;
+        try
+        {
+            using var p = new System.Net.NetworkInformation.Ping();
+            for (int i = 0; i < 2; i++)
+                if (p.Send(host, 1000).Status == System.Net.NetworkInformation.IPStatus.Success) return true;
+        }
+        catch (Exception) { }
+        return false;
+    }
+
+    static string Broadcast(string ip, int prefix)
+    {
+        var b = IPAddress.Parse(ip).GetAddressBytes();
+        uint v = (uint)(b[0] << 24 | b[1] << 16 | b[2] << 8 | b[3]);
+        uint mask = prefix == 0 ? 0 : uint.MaxValue << (32 - prefix);
+        uint bc = v | ~mask;
+        return $"{bc >> 24}.{(bc >> 16) & 255}.{(bc >> 8) & 255}.{bc & 255}";
     }
 
     void Log(string s) { lock (log) log.Add(DateTime.Now.ToString("HH:mm:ss") + " " + s); }
@@ -63,6 +89,8 @@ public sealed class ScanController
         {
             if (cancel) break;
             P(L.T("StatusOpenWrt", t));
+            // devices that are switched off (e.g. a rarely used AP) are skipped without a warning
+            if (!Reachable(t)) { Log($"OpenWrt {t}: no answer to ping, skipped"); continue; }
             var o = OpenWrtClient.Query(t);
             Log(o.Ok ? $"OpenWrt {t}: {o.Name}, {o.Interfaces.Count} interfaces, {o.Fdb.Count} FDB, {o.Stations.Count} Wi-Fi clients, {o.Leases.Count} leases"
                      : $"OpenWrt {t}: {o.Error}");
@@ -124,6 +152,25 @@ public sealed class ScanController
         extra.Remove(ad.Mac);
         extra.Remove("");
 
+        // fingerprinting runs in parallel with the LLTD rounds
+        var fingerprints = new Dictionary<string, FingerprintInfo>();
+        Task? fpTask = null;
+        if (cfg.Fingerprint && ad.IPv4.Length > 0 && !cancel)
+        {
+            var fpIps = new HashSet<string>(neighbors.Select(n => n.IPv4));
+            foreach (var o in owrt.Where(o => o.Ok)) foreach (var l in o.Leases.Values) if (l.IPv4.Length > 0) fpIps.Add(l.IPv4);
+            fpIps.UnionWith(mdns.Select(h => h.IPv4));
+            fpIps.UnionWith(ssdp.Select(x => x.IPv4));
+            fpIps.RemoveWhere(i => i.Length == 0 || !MacUtil.SameSubnet(i, ad.IPv4, ad.Prefix));
+            string bcast = Broadcast(ad.IPv4, ad.Prefix);
+            fpTask = Task.Run(() =>
+            {
+                try { fingerprints = Fingerprint.Run(IPAddress.Parse(ad.IPv4), bcast, fpIps, 500, Log, fpCts.Token); }
+                catch (Exception ex) { Log("Fingerprint: " + ex.Message); }
+            });
+            if (!npcap) { P(L.T("StatusFingerprint")); fpTask.Wait(); }
+        }
+
         var lltdHosts = new List<LltdHost>();
         var tree = new List<TNode>();
         string status = "";
@@ -168,6 +215,26 @@ public sealed class ScanController
         }
         else if (!npcap) { status = L.T("NpcapMissingShort"); warnings.Add(L.T("NpcapMissingShort")); }
 
+        if (fpTask != null && !fpTask.IsCompleted)
+        {
+            P(L.T("StatusFingerprint"));
+            if (cancel) fpCts.Cancel();
+            fpTask.Wait();
+        }
+        foreach (var f in fingerprints.Values.OrderBy(f => MacUtil.IpKey(f.IPv4)))
+        {
+            var info = new List<string>();
+            if (f.Open.Count > 0) info.Add("ports " + string.Join(",", f.Open.Keys));
+            if (f.Model().Length > 0) info.Add("model " + f.Model());
+            if (f.Servers.Count > 0) info.Add("server " + string.Join(" / ", f.Servers));
+            if (f.Realms.Count > 0) info.Add("realm " + string.Join(" / ", f.Realms));
+            if (f.Certs.Count > 0) info.Add("cert " + string.Join(" / ", f.Certs));
+            if (f.Onvif) info.Add("ONVIF");
+            if (f.TuyaVersion.Length > 0) info.Add("Tuya " + f.TuyaVersion);
+            if (f.Streams.Count > 0) info.Add("streams " + string.Join(" ", f.Streams));
+            if (info.Count > 0) Log($"Fingerprint {f.IPv4}: {string.Join("; ", info)}");
+        }
+
         P(L.T("StatusEvaluate"));
         var ips = neighbors.Select(n => n.IPv4).Concat(lltdHosts.Select(h => h.IPv4)).Where(i => i.Length > 0);
         var reverse = WindowsNet.ReverseLookup(ips, 3000);
@@ -175,8 +242,10 @@ public sealed class ScanController
         {
             Adapter = ad, Neighbors = neighbors, OpenWrt = owrt, Nsdp = nsdp, Mdns = mdns, Ssdp = ssdp, Wlan = wlan,
             LltdHosts = lltdHosts, Tree = tree, ReverseNames = reverse,
+            Fingerprints = fingerprints, Known = known, UseNames = cfg.UseNames,
         };
         var model = ModelBuilder.Build(data);
+        known.Save();
         var layout = TreeLayout.Run(model);
 
         int cntL = model.All.Count(n => n.Lltd);

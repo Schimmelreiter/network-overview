@@ -42,6 +42,7 @@ public static class DeviceIcons
             case DeviceType.Receiver: Receiver(g, x, y, t); break;
             case DeviceType.AirConditioner: AirConditioner(g, x, y, t); break;
             case DeviceType.Camera: Camera(g, x, y, t); break;
+            case DeviceType.Lamp: Bulb(g, x, y, t); break;
             default: Monitor(g, x, y, grey, !n.Lltd && !n.IsSelf && n.Name.Length == 0, t); break;
         }
         if (n.Wireless) Bars(g, x, y, t);
@@ -346,6 +347,31 @@ public static class DeviceIcons
         using (var fb = new SolidBrush(Color.FromArgb(255, 160, 40))) g.FillPath(fb, flame);
         using var dot = new SolidBrush(Color.FromArgb(150, 150, 150));
         g.FillEllipse(dot, R(x - 2, y + 13, 4, 4));
+    }
+
+    /// <summary>Light bulb with glow and screw base.</summary>
+    public static void Bulb(Graphics g, float x, float y, Theme t)
+    {
+        using (var glow = new SolidBrush(Color.FromArgb(t.Dark ? 70 : 55, 255, 210, 80))) g.FillEllipse(glow, R(x - 22, y - 26, 44, 44));
+        using (var p = new GraphicsPath())
+        {
+            p.AddArc(R(x - 13, y - 21, 26, 26), 140, 260);
+            p.AddLine(x + 8, y + 2, x + 6, y + 8);
+            p.AddLine(x - 6, y + 8, x - 8, y + 2);
+            p.CloseFigure();
+            Fill(g, p, Color.FromArgb(255, 248, 200), Color.FromArgb(255, 205, 70), LinearGradientMode.Vertical, t);
+        }
+        using (var fil = new Pen(Color.FromArgb(200, 120, 20), 1.5f))
+        {
+            g.DrawLine(fil, x - 4, y + 1, x - 2, y - 6);
+            g.DrawLine(fil, x - 2, y - 6, x + 2, y - 6);
+            g.DrawLine(fil, x + 2, y - 6, x + 4, y + 1);
+        }
+        using var metal = new LinearGradientBrush(R(x - 7, y + 8, 14, 11), Color.FromArgb(205, 205, 210), Color.FromArgb(120, 120, 128), LinearGradientMode.Horizontal);
+        g.FillRectangle(metal, R(x - 6.5f, y + 8, 13, 9));
+        using (var thread = new Pen(Color.FromArgb(95, 95, 102), 1)) for (int i = 0; i < 3; i++) g.DrawLine(thread, x - 6.5f, y + 10 + i * 2.5f, x + 6.5f, y + 9 + i * 2.5f);
+        using var tip = new SolidBrush(Color.FromArgb(70, 70, 76));
+        g.FillEllipse(tip, R(x - 3.5f, y + 16, 7, 4));
     }
 
     /// <summary>Small IP camera on a stand (round head with lens).</summary>

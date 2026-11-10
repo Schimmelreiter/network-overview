@@ -20,6 +20,8 @@ public static class NodeText
         var l = new List<string> { n.Title };
         if (n.IsSelf) l.Add(L.T("ThisComputer"));
         if (n.Kind != NodeKind.Internet) l.Add(L.T("Type", TypeName(n)));
+        if (n.Kind == NodeKind.Device && n.Source.Length > 0)
+            l.Add(L.T("DetectedBy", L.T(n.Source) + (n.SourceDetail.Length > 0 ? " (" + n.SourceDetail + ")" : "")));
         if (n.Model.Length > 0) l.Add(L.T("Model", n.Model));
         if (n.Vendor.Length > 0) l.Add(L.T("Vendor", n.Vendor));
         if (n.IPv4.Length > 0) l.Add("IPv4: " + n.IPv4);
@@ -34,6 +36,8 @@ public static class NodeText
         foreach (var s in n.SeenAt) l.Add(L.T("SeenAt", s));
         foreach (var s in n.Notes) l.Add("⚠ " + s);
         if (n.MdnsServices.Count > 0) l.Add(L.T("Services", string.Join(", ", n.MdnsServices)));
+        if (n.OpenPorts.Length > 0) l.Add(L.T("OpenPorts", n.OpenPorts));
+        foreach (var s in n.Streams) l.Add(L.T("Stream", s));
         var p = m.ParentOf(n);
         if (p != null) l.Add(L.T("ConnectedTo", p.Title));
         if (n.Inferred && !n.Managed) l.Add(L.T("InferredSwitch", n.Members));

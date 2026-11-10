@@ -17,6 +17,7 @@ public sealed class SsdpDevice
     public string ModelName { get; set; } = "";
     public string ModelNumber { get; set; } = "";
     public string DeviceType { get; set; } = "";
+    public List<string> Usns { get; } = new();
 
     /// <summary>Model text for display, e.g. "GS308E" or "WebOS TV 55UK6300".</summary>
     public string Model
@@ -65,6 +66,7 @@ public static class Ssdp
                     if (d.Location.Length == 0 || (headers.TryGetValue("ST", out var st) && st.Contains("rootdevice", StringComparison.OrdinalIgnoreCase)))
                         d.Location = loc;
                     if (headers.TryGetValue("SERVER", out var server)) d.Server = server;
+                    if (headers.TryGetValue("USN", out var usn) && !d.Usns.Contains(usn)) d.Usns.Add(usn);
                 }
                 catch (SocketException) { }
             }

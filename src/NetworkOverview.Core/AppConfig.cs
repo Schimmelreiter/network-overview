@@ -11,6 +11,9 @@ public sealed class AppConfig
     public bool Mdns { get; set; } = true;
     public bool Ssdp { get; set; } = true;
     public bool PingSweep { get; set; }
+    public bool Fingerprint { get; set; } = true;
+    public bool UseNames { get; set; } = true;
+    public bool ShowLastMap { get; set; } = true;
     public int MaxMinutes { get; set; } = 10;
     public string Adapter { get; set; } = "";
     public string Language { get; set; } = "system";

@@ -29,11 +29,18 @@ ermittelt die Switch-Struktur mit demselben Verfahren wie Windows 7: dem Protoko
   neuere Netgear-Switches).
 - **Gerätetypen mit eigenen Symbolen**: Echo Dot, Echo Spot, Echo Show, Fire TV, Google-Lautsprecher
   und -Displays, Chromecast, Smartphones, Tablets, Drucker, Fernseher, NAS, Receiver (Set-Top-Boxen wie Vu+, GigaBlue, Dreambox), Heizungsregler, Klimageräte, IP-Kameras,
-  IoT-Geräte. Erkannt wird
-  über mDNS, den Herstellerteil der MAC-Adresse und, wenn sonst nichts hilft, den Gerätenamen.
+  Lampen, IoT-Geräte.
+- **Gerätebestimmung ohne Namen**: über das, was Geräte ankündigen (mDNS, SSDP/UPnP) und
+  beantworten (eine kurze Liste aussagekräftiger TCP-Ports mit Banner, Webserver, Anmelde-Realm und
+  TLS-Zertifikat, ONVIF/WS-Discovery, Magic Home, Tuya-Broadcasts), danach über den Hersteller der
+  MAC-Adresse. Vom Benutzer vergebene Namen (DHCP/DNS) verfeinern nur noch zuletzt ein allgemeines
+  Ergebnis und lassen sich abschalten. Die Details zeigen, woran ein Gerät erkannt wurde. Einmal
+  erkannt, behält ein Gerät seinen Typ, auch wenn es später im Standby oder ausgeschaltet ist.
+- **Letzte Karte beim Start**: Die vorige Karte erscheint sofort, während neu gescannt wird.
 - Hell- und Dunkelmodus nach Windows-Einstellung, Sprachen Deutsch, Englisch, Spanisch und
   Französisch.
-- Tooltips und Details, Kontextmenü (Weboberfläche, Freigaben, Adressen kopieren), Zoom
+- Tooltips und Details, Kontextmenü (Weboberfläche, Freigaben, Videostreams von motionEye-Servern,
+  Wake-on-LAN, Adressen kopieren), Zoom
   (Strg + Mausrad), Export als PNG, Protokoll des Scans.
 
 ## Voraussetzungen
@@ -76,11 +83,16 @@ dauert wenige Sekunden bis mehrere Minuten – grob *n²/2 + n·m* Tests zu je e
 | Netgear-Switches per NSDP abfragen | Broadcast-Abfrage auf UDP 63322/63324. |
 | mDNS/Zeroconf-Dienste abfragen | Multicast-Abfrage auf UDP 5353. |
 | UPnP-Geräte per SSDP abfragen | Multicast-Abfrage auf UDP 1900, danach die Gerätebeschreibungen per HTTP. |
+| Geräte genauer bestimmen | Prüft je Gerät etwa 20 TCP-Ports (je Gerät nur eine Verbindung gleichzeitig) und hört auf ONVIF, Magic Home und Tuya; dauert wenige Sekunden und läuft parallel zu den Topologietests. |
+| Gerätenamen verwenden | DHCP-/DNS-Namen dürfen ein allgemeines Ergebnis verfeinern (z. B. Echo Show statt Echo Dot, Smartphones). Kameras werden nie über den Namen erkannt. |
 | Ganzes Subnetz anpingen | Füllt vor dem Scan die ARP-Tabelle (Subnetze bis /22). |
+| Letzte Karte beim Start anzeigen | Zeigt das vorige Ergebnis sofort, während neu gescannt wird. |
 | Höchstdauer | Zeitlimit für die Topologietests. |
 | Sprache | Wie Windows, Deutsch, Englisch, Spanisch oder Französisch. |
 
-Die Einstellungen liegen in `%APPDATA%\NetworkOverview\config.json`.
+Die Einstellungen liegen in `%APPDATA%\NetworkOverview\config.json`, die letzte Karte in
+`lastmap.json` und die erkannten Gerätetypen je MAC-Adresse in `devices.json` im selben Ordner.
+OpenWrt-Geräte, die nicht auf Ping antworten (ausgeschaltet), werden ohne Warnung übersprungen.
 
 Probleme während eines Scans (keine gültige IPv4-Adresse, OpenWrt-Geräte nicht erreichbar,
 LLTD-Responder, die keine Testrahmen empfangen, …) erscheinen in einem Hinweisbalken über der Karte;

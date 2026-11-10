@@ -20,6 +20,9 @@ public sealed class ScanData
     public List<LltdHost> LltdHosts { get; init; } = new();
     public List<TNode> Tree { get; init; } = new();
     public Dictionary<string, string> ReverseNames { get; init; } = new();
+    public Dictionary<string, FingerprintInfo> Fingerprints { get; init; } = new();
+    public KnownDevices? Known { get; init; }
+    public bool UseNames { get; init; } = true;
 }
 
 /// <summary>Merges LLTD, ARP, OpenWrt, NSDP and mDNS data into one tree rooted at the Internet.</summary>
@@ -212,7 +215,10 @@ public static class ModelBuilder
             if (n.Lltd || n.IsSelf || n.OpenWrt != null || n.Managed || n.Wireless || n.IPv4 == ad.Gateway) continue;
             ssdpByIp.TryGetValue(n.IPv4, out var sd);
             bool upnpSwitch = sd != null && Has(sd.Manufacturer, "netgear") && Has(sd.ModelName + " " + sd.ModelNumber, @"\b(GS|XS|MS|JGS|GC)\d");
-            bool macSwitch = Has(n.Vendor, @"^netgear") && (n.Name.Length == 0 || Has(n.Name, @"switch|\bgs\d|\bxs\d"));
+            d.Fingerprints.TryGetValue(n.IPv4, out var nfp);
+            // Netgear Plus switches run a Contiki web server; otherwise only an empty or switch-like name helps
+            bool macSwitch = Has(n.Vendor, @"^netgear") && (nfp != null && nfp.Server("contiki")
+                             || n.Name.Length == 0 || d.UseNames && Has(n.Name, @"switch|\bgs\d|\bxs\d"));
             if (!upnpSwitch && !macSwitch) continue;
             n.Kind = NodeKind.ManagedSwitch;
             n.Managed = true;
@@ -350,7 +356,27 @@ public static class ModelBuilder
             if (n.Kind != NodeKind.Device) continue;
             mdnsByIp.TryGetValue(n.IPv4, out var mh);
             ssdpByIp.TryGetValue(n.IPv4, out var sd);
-            n.DeviceType = DeviceClassifier.Classify(n.Vendor, n.Name, mh, n.Lltd, sd?.Model, n.Wireless ? true : n.InTree ? false : null, n.Mac);
+            d.Fingerprints.TryGetValue(n.IPv4, out var fp);
+            var c = DeviceClassifier.Classify(new DeviceEvidence
+            {
+                Vendor = n.Vendor, Mac = n.Mac, Name = n.Name, Mdns = mh, Ssdp = sd, Fingerprint = fp, Lltd = n.Lltd,
+                Wireless = n.Wireless ? true : n.InTree ? false : null, UseNames = d.UseNames,
+            });
+            string fpModel = fp?.Model() ?? "";
+            if (d.Known != null)
+            {
+                c = d.Known.Apply(n.Mac, c, n.Model.Length > 0 ? n.Model : fpModel, out var knownModel);
+                if (n.Model.Length == 0 && fpModel.Length == 0) fpModel = knownModel;
+            }
+            n.DeviceType = c.Type;
+            n.Source = c.Source;
+            n.SourceDetail = c.Detail;
+            if (n.Model.Length == 0) n.Model = fpModel;
+            if (fp != null)
+            {
+                n.OpenPorts = string.Join(", ", fp.Open.Keys);
+                n.Streams.AddRange(fp.Streams);
+            }
         }
         return m;
     }

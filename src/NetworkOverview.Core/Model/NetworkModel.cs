@@ -49,7 +49,13 @@ public sealed class Node
     public bool HasWifiClients { get; set; }
     public bool InTree { get; set; }
     public string ApKey { get; set; } = "";
-    public OpenWrtInfo? OpenWrt { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore] public OpenWrtInfo? OpenWrt { get; set; }
+    /// <summary>How the device type was determined (localization key Src_*) and a short detail.</summary>
+    public string Source { get; set; } = "";
+    public string SourceDetail { get; set; } = "";
+    public string OpenPorts { get; set; } = "";
+    /// <summary>Video streams offered by the device (e.g. motionEye MJPEG streams).</summary>
+    public List<string> Streams { get; } = new();
 
     // layout
     public float X { get; set; }
