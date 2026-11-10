@@ -30,7 +30,7 @@ public sealed class MainForm : Form
     readonly ToolStripStatusLabel status = new() { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
     readonly ToolStripProgressBar progress = new() { Visible = false, Width = 160 };
     readonly ContextMenuStrip ctx = new();
-    readonly ToolStripMenuItem miWeb = new(), miShare = new(), miIp = new(), miMac = new(), miDetails = new();
+    readonly ToolStripMenuItem miWeb = new(), miShare = new(), miIp = new(), miMac = new(), miDetails = new(), miStreams = new(), miWake = new();
 
     List<AdapterInfo> adapters = new();
     ScanController? scan;
@@ -59,7 +59,7 @@ public sealed class MainForm : Form
         Controls.Add(split);
         Controls.Add(bar);
         Controls.Add(statusStrip);
-        ctx.Items.AddRange(new ToolStripItem[] { miWeb, miShare, miIp, miMac, new ToolStripSeparator(), miDetails });
+        ctx.Items.AddRange(new ToolStripItem[] { miWeb, miShare, miStreams, miIp, miMac, miWake, new ToolStripSeparator(), miDetails });
 
         btnScan.Click += (_, _) => { if (scan != null) { scan.Cancel(); status.Text = L.T("StatusCancelling"); } else _ = StartScan(); };
         btnSettings.Click += (_, _) => ShowSettings();
@@ -92,6 +92,13 @@ public sealed class MainForm : Form
         miIp.Click += (_, _) => { if (ctxNode?.IPv4.Length > 0) Clipboard.SetText(ctxNode.IPv4); };
         miMac.Click += (_, _) => { if (ctxNode?.Mac.Length > 0) Clipboard.SetText(ctxNode.Mac); };
         miDetails.Click += (_, _) => { if (ctxNode != null) ShowDetails(ctxNode); };
+        miWake.Click += (_, _) =>
+        {
+            if (ctxNode == null || ctxNode.Mac.Length == 0 || cbAdapter.SelectedIndex < 0) return;
+            var ad = adapters[cbAdapter.SelectedIndex];
+            try { WindowsNet.WakeOnLan(ctxNode.Mac, ad.IPv4, ad.Prefix); status.Text = L.T("WakeSent", ctxNode.Title); }
+            catch (Exception ex) { status.Text = ex.Message; }
+        };
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
 
         ApplyTexts();
@@ -111,6 +118,13 @@ public sealed class MainForm : Form
         }
         // check Npcap before the first scan; selecting the adapter must not start a scan during start-up
         npcap = PcapIO.IsAvailable();
+        if (cfg.ShowLastMap && MapCache.Load(out var cachedAt) is { } cached)
+        {
+            result = cached;
+            map.Result = cached;
+            FillList();
+            status.Text = L.T("StatusCached", cachedAt.ToString("g"));
+        }
         int sel = Math.Max(0, adapters.FindIndex(a => a.Name == cfg.Adapter));
         cbAdapter.SelectedIndex = sel;
         initializing = false;
@@ -154,6 +168,7 @@ public sealed class MainForm : Form
         btnZoomIn.ToolTipText = L.T("ZoomIn");
         btnZoomOut.ToolTipText = L.T("ZoomOut");
         miWeb.Text = L.T("OpenWeb"); miShare.Text = L.T("ShowShares"); miIp.Text = L.T("CopyIp"); miMac.Text = L.T("CopyMac"); miDetails.Text = L.T("Details");
+        miStreams.Text = L.T("Streams"); miWake.Text = L.T("WakeOnLan");
         list.Columns.Clear();
         foreach (var (key, width) in new[] { ("ColName", 170), ("ColIPv4", 105), ("ColMac", 120), ("ColVendor", 150), ("ColType", 120), ("ColMedium", 95), ("ColLink", 85), ("ColSsid", 100), ("ColLltd", 45), ("ColConnectedTo", 160) })
             list.Columns.Add(L.T(key), LogicalToDeviceUnits(width));
@@ -180,6 +195,7 @@ public sealed class MainForm : Form
         {
             var r = await scan.RunAsync(ad, cfg, npcap, prog);
             result = r;
+            if (r.Model.All.Any(n => n.Kind == NodeKind.Device && !n.IsSelf)) MapCache.Save(r);
             lastLog = r.Log;
             ShowWarnings(r.Warnings);
             UpdateAdapter(r.Adapter);
@@ -292,6 +308,14 @@ public sealed class MainForm : Form
         ctxNode = n;
         bool ip = n.IPv4.Length > 0;
         miWeb.Enabled = ip; miShare.Enabled = ip; miIp.Enabled = ip; miMac.Enabled = n.Mac.Length > 0;
+        miWake.Visible = n.Mac.Length > 0 && !n.IsSelf && n.Kind == NodeKind.Device;
+        miStreams.DropDownItems.Clear();
+        foreach (var s in n.Streams)
+        {
+            var url = s;
+            miStreams.DropDownItems.Add(new ToolStripMenuItem(url, null, (_, _) => Open(url)));
+        }
+        miStreams.Visible = n.Streams.Count > 0;
         ctx.Show(owner, location);
     }
 

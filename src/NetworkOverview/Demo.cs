@@ -49,6 +49,7 @@ internal static class Demo
         Add("plug", "shelly-plug", "gw", type: DeviceType.Iot, ip: "192.168.75.249", wifi: true);
         Add("ac", "Klima-WZ", "gw", type: DeviceType.AirConditioner, ip: "192.168.75.209", wifi: true);
         Add("cam", "Cam-WZ", "gw", type: DeviceType.Camera, ip: "192.168.75.221", wifi: true);
+        Add("lamp", "X-Buero-Mitte", "gw", type: DeviceType.Lamp, ip: "192.168.75.210", wifi: true);
         Add("unk", "", null, ip: "192.168.75.170");
         Add("unk2", "Sonos-Bad", null, type: DeviceType.MediaPlayer, ip: "192.168.75.171");
         return m;

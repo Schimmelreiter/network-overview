@@ -30,6 +30,9 @@ var tests = new List<(string Name, Action Body)>
     ("mDNS: build and parse packets", MiscTests.MdnsRoundTrip),
     ("OpenWrt: parse script output", MiscTests.OpenWrtParse),
     ("Device classifier", MiscTests.Classifier),
+    ("Device classifier: evidence before names", MiscTests.ClassifierEvidence),
+    ("Known devices and map cache", MiscTests.KnownAndCache),
+    ("Fingerprint: local web servers, motionEye streams, Tuya decoding", MiscTests.FingerprintLocal),
     ("Vendor database", MiscTests.Vendors),
     ("SSDP: headers and device description", MiscTests.SsdpParse),
     ("NSDP: response parsing", MiscTests.NsdpParse),
@@ -434,6 +437,136 @@ static class MiscTests
         Assert.True(!o.Interfaces.ContainsKey("lo"), "loopback ignored");
     }
 
+    public static void ClassifierEvidence()
+    {
+        Classification K(string mac, string name, FingerprintInfo? fp = null, SsdpDevice? sd = null, bool useNames = true, bool? wireless = true) =>
+            DeviceClassifier.Classify(new DeviceEvidence { Mac = mac, Vendor = VendorDb.Lookup(mac), Name = name, Fingerprint = fp, Ssdp = sd, UseNames = useNames, Wireless = wireless });
+        FingerprintInfo F(params int[] ports) { var f = new FingerprintInfo(); foreach (var p in ports) f.Open[p] = ""; return f; }
+
+        // Enigma2 via OpenWebif, even without vendor or name
+        var e2 = F(21, 22, 80, 443, 8001); e2.Realms.Add("OpenWebif");
+        var c = K("02:00:00:00:00:01", "", e2);
+        Assert.Equal(DeviceType.Receiver, c.Type, "OpenWebif"); Assert.Equal("Src_Fingerprint", c.Source, "OpenWebif source");
+        // Tapo camera: TP-Link certificate + RTSP, name ignored
+        var tapo = F(443, 554, 2020, 8800); tapo.Certs.Add("C=US, O=TPRI, CN=TPRI-DEVICE");
+        Assert.Equal(DeviceType.Camera, K("6c:4c:bc:71:4f:d5", "Haustuer", tapo).Type, "Tapo");
+        // Wansview via ONVIF
+        var onvif = F(80, 554, 8899); onvif.Onvif = true; onvif.OnvifManufacturer = "WVC"; onvif.OnvifModel = "Q5";
+        Assert.Equal(DeviceType.Camera, K("02:00:00:00:00:02", "", onvif).Type, "ONVIF");
+        Assert.Equal("WVC Q5", onvif.Model(), "ONVIF model");
+        // ems-esp via its web server, Magic Home lamp
+        var ems = F(23, 80); ems.Servers.Add("ems-esp");
+        Assert.Equal(DeviceType.HeatingController, K("88:57:21:c0:fc:e8", "", ems).Type, "ems-esp");
+        var mh = F(5577); mh.MagicHomeModel = "AK001-ZJ21412";
+        Assert.Equal(DeviceType.Lamp, K("08:65:f0:7c:04:23", "", mh).Type, "Magic Home");
+        // Fire TV via SSDP USN, without vendor (LAN adapter MAC) and without name
+        var sd = new SsdpDevice(); sd.Usns.Add("uuid:NFANDROID2-PRV-FIRETVSTICK2021-AMAZOAFTKA-20778-6B9B::upnp:rootdevice");
+        Assert.Equal(DeviceType.FireTv, K("3c:18:a0:a1:b8:45", "", null, sd, wireless: false).Type, "Fire TV SSDP");
+        // Echo: Amazon MAC + ports, model only from the name
+        var echo = F(4070, 5541, 55443);
+        Assert.Equal(DeviceType.EchoSpot, K("18:0b:1b:27:97:ec", "Echo-Spot-Kueche", echo).Type, "Echo Spot by name");
+        Assert.Equal(DeviceType.EchoDot, K("18:0b:1b:27:97:ec", "Echo-Spot-Kueche", echo, useNames: false).Type, "Echo without names");
+        Assert.Equal(DeviceType.FireTv, K("a4:02:b7:fe:65:1a", "", F(8009, 9080, 55443)).Type, "Amazon with Netflix/Cast ports");
+        // names off: a Samsung phone stays a computer, names on: phone
+        Assert.Equal(DeviceType.Computer, K("8c:b8:4a:f6:db:89", "Galaxy-Note10-von-Hauke", null, null, false).Type, "names off");
+        c = K("8c:b8:4a:f6:db:89", "Galaxy-Note10-von-Hauke");
+        Assert.Equal(DeviceType.Phone, c.Type, "names on"); Assert.Equal("Src_Name", c.Source, "name source");
+        // a name never overrides strong evidence
+        Assert.Equal(DeviceType.Receiver, K("02:00:00:00:00:01", "Drucker", e2).Type, "name does not override");
+        // Tuya by its port
+        Assert.Equal(DeviceType.Iot, K("02:00:00:00:00:03", "", F(6668)).Type, "Tuya port");
+    }
+
+    static System.Net.Sockets.TcpListener Serve(int port, string response)
+    {
+        var l = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, port);
+        l.Start();
+        _ = Task.Run(async () =>
+        {
+            while (true)
+            {
+                System.Net.Sockets.TcpClient c;
+                try { c = await l.AcceptTcpClientAsync(); } catch (Exception) { return; }
+                _ = Task.Run(async () =>
+                {
+                    using (c)
+                    {
+                        var st = c.GetStream();
+                        var buf = new byte[2048];
+                        // HTTP servers wait for the request: answer only after reading it (a passive banner read gets nothing)
+                        try { st.ReadTimeout = 3000; if (await st.ReadAsync(buf) <= 0) return; } catch (Exception) { return; }
+                        var b = Encoding.ASCII.GetBytes(response);
+                        try { await st.WriteAsync(b); } catch (Exception) { }
+                    }
+                });
+            }
+        });
+        return l;
+    }
+
+    public static void FingerprintLocal()
+    {
+        var web = Serve(8080, "HTTP/1.0 401 Unauthorized\r\nServer: TwistedWeb/25.5.0\r\nWWW-Authenticate: Basic realm=\"OpenWebif\"\r\n\r\n<html><title>401 - Unauthorized</title></html>");
+        var me = Serve(8765, "HTTP/1.1 200 OK\r\nServer: motionEye/0.42\r\nContent-Type: text/html\r\n\r\n<title>cams</title>");
+        var stream = Serve(9081, "HTTP/1.0 200 OK\r\nContent-Type: multipart/x-mixed-replace; boundary=BoundaryString\r\n\r\n--BoundaryString\r\n");
+        try
+        {
+            var r = Fingerprint.Run(System.Net.IPAddress.Parse("127.0.0.2"), "127.255.255.255", new[] { "127.0.0.1" }, 400);
+            Assert.True(r.TryGetValue("127.0.0.1", out var f), "fingerprint for 127.0.0.1");
+            Assert.True(f!.Has(8080) && f.Has(8765), "open ports: " + string.Join(",", f.Open.Keys));
+            Assert.True(f.Realm("OpenWebif"), "realm: " + string.Join("/", f.Realms));
+            Assert.True(f.Server("motionEye"), "server: " + string.Join("/", f.Servers));
+            Assert.Equal("http://127.0.0.1:9081/", string.Join(" ", f.Streams), "motionEye stream");
+            Assert.Equal(DeviceType.Receiver, DeviceClassifier.Classify(new DeviceEvidence { Fingerprint = f }).Type, "classified via OpenWebif");
+        }
+        finally { web.Stop(); me.Stop(); stream.Stop(); }
+
+        // Tuya 3.3 announcement, AES-ECB with the public UDP key
+        var key = System.Security.Cryptography.MD5.HashData(Encoding.ASCII.GetBytes("yGAdlopoPVldABfn"));
+        var plain = Encoding.ASCII.GetBytes("{\"ip\":\"192.168.75.33\",\"gwId\":\"bf1\",\"version\":\"3.3\"}");
+        using var aes = System.Security.Cryptography.Aes.Create();
+        aes.Key = key;
+        var enc = aes.EncryptEcb(plain, System.Security.Cryptography.PaddingMode.PKCS7);
+        int len = enc.Length + 12;
+        var pkt = new List<byte> { 0, 0, 0x55, 0xAA, 0, 0, 0, 0, 0, 0, 0, 0x13, (byte)(len >> 24), (byte)(len >> 16), (byte)(len >> 8), (byte)len, 0, 0, 0, 0 };
+        pkt.AddRange(enc); pkt.AddRange(new byte[] { 1, 2, 3, 4, 0, 0, 0xAA, 0x55 });
+        var d = pkt.ToArray();
+        Assert.True(Fingerprint.TuyaDecode(d, d.Length).Contains("\"version\":\"3.3\""), "Tuya decoded");
+    }
+
+    public static void KnownAndCache()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "no-known-" + Guid.NewGuid() + ".json");
+        var k = new KnownDevices();
+        var strong = new Classification(DeviceType.Tv, "Src_Ssdp", "");
+        k.Apply("24:fc:e5:90:83:d4", strong, "Samsung TV", out _);
+        k.Save(path);
+        var k2 = KnownDevices.Load(path);
+        var weak = k2.Apply("24:FC:E5:90:83:D4", new Classification(DeviceType.Computer, "Src_Default"), "", out var model);
+        Assert.Equal(DeviceType.Tv, weak.Type, "remembered type"); Assert.Equal("Src_Previous", weak.Source, "remembered source"); Assert.Equal("Samsung TV", model, "remembered model");
+        // a type refined by name is not replaced by the remembered one
+        var named = k2.Apply("24:fc:e5:90:83:d4", new Classification(DeviceType.Phone, "Src_Name"), "", out _);
+        Assert.Equal(DeviceType.Phone, named.Type, "named type kept");
+        File.Delete(path);
+
+        var m = new NetworkModel();
+        m.Add(new Node { Key = "#internet", Kind = NodeKind.Internet, Name = "Internet", Virtual = true });
+        var gw = m.Add(new Node { Key = "gw", Kind = NodeKind.Gateway, IPv4 = "192.168.75.1", Parent = "#internet", IsGateway = true });
+        var cam = m.Add(new Node { Key = "cam", Name = "Orwell", IPv4 = "192.168.75.12", Mac = "68:1d:ef:5f:06:75", Parent = "gw", DeviceType = DeviceType.Camera, Source = "Src_Fingerprint" });
+        cam.Streams.Add("http://192.168.75.12:9081/");
+        cam.Notes.Add("note");
+        var mp = Path.Combine(Path.GetTempPath(), "no-map-" + Guid.NewGuid() + ".json");
+        MapCache.Save(new ScanResult { Model = m, Status = "ok" }, mp);
+        var r = MapCache.Load(out var when, mp);
+        Assert.True(r != null && (DateTime.Now - when).TotalMinutes < 1, "map loaded");
+        var c2 = r!.Model["cam"];
+        Assert.Equal(DeviceType.Camera, c2.DeviceType, "type restored");
+        Assert.Equal("gw", c2.Parent ?? "", "parent restored");
+        Assert.Equal("http://192.168.75.12:9081/", c2.Streams.FirstOrDefault() ?? "", "streams restored");
+        Assert.True(r.Layout.Width > 0, "layout computed");
+        File.Delete(mp);
+    }
+
     public static void Classifier()
     {
         void C(DeviceType exp, string vendor, string name) => Assert.Equal(exp, DeviceClassifier.Classify(vendor, name, null, false), $"'{name}' / '{vendor}'");
@@ -458,10 +591,11 @@ static class MiscTests
         C(DeviceType.Printer, "Brother Industries, LTD.", "BRW123");
         C(DeviceType.Computer, "", "QUATTRO");
         C(DeviceType.AirConditioner, "", "Klima-SZ");
-        C(DeviceType.Camera, "", "Cam-SZ");
-        C(DeviceType.Camera, "Espressif Inc.", "Cam-Gaszaehler");
-        C(DeviceType.Camera, "TP-Link Systems Inc", "C211");
-        C(DeviceType.Camera, "", "wansview-q5");
+        // cameras are not detected by name (too ambiguous across languages)
+        C(DeviceType.Computer, "", "Cam-SZ");
+        C(DeviceType.Iot, "Espressif Inc.", "Cam-Gaszaehler");
+        C(DeviceType.Computer, "TP-Link Systems Inc", "C211");
+        C(DeviceType.Computer, "", "wansview-q5");
         C(DeviceType.Computer, "", "Camino-PC");
         DeviceType M(string mac, string name) => DeviceClassifier.Classify(VendorDb.Lookup(mac), name, null, false, null, true, mac);
         Assert.Equal(DeviceType.Camera, M("4c:2f:7b:c7:e4:f5", "Wichs-Cam"), "Wansview (AltoBeam)");

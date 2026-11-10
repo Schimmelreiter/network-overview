@@ -28,10 +28,17 @@ protocol.
 - **SSDP / UPnP**: names and models from UPnP device descriptions (TVs, receivers, routers, newer
   Netgear switches).
 - **Device types with their own symbols**: Echo Dot, Echo Spot, Echo Show, Fire TV, Google speakers
-  and displays, Chromecast, phones, tablets, printers, TVs, NAS, TV receivers (set-top boxes such as Vu+, GigaBlue, Dreambox), heating controllers, air conditioners, IP cameras, IoT devices. Detection uses mDNS,
-  the vendor part of the MAC address and, if nothing else helps, the device name.
+  and displays, Chromecast, phones, tablets, printers, TVs, NAS, TV receivers (set-top boxes such as Vu+, GigaBlue, Dreambox), heating controllers, air conditioners, IP cameras, lamps, IoT devices.
+- **Device identification without names**: what devices announce (mDNS, SSDP/UPnP) and answer
+  (a short list of telling TCP ports with their banners, web servers, login realms and TLS
+  certificates, ONVIF/WS-Discovery, Magic Home, Tuya broadcasts), then the vendor of the MAC
+  address. User-given names (DHCP/DNS) are only used last to refine a generic result and can be
+  switched off. The details show how each device was identified. Once identified, a device keeps
+  its type when it is in standby or switched off later.
+- **Last map at start-up**: the previous map is shown immediately while a new scan runs.
 - Light and dark mode following Windows, languages German, English, Spanish and French.
-- Tooltips and details, context menu (web interface, shares, copy addresses), zoom
+- Tooltips and details, context menu (web interface, shares, video streams of motionEye servers,
+  Wake-on-LAN, copy addresses), zoom
   (Ctrl + mouse wheel), export as PNG, scan log.
 
 ## Requirements
@@ -73,11 +80,16 @@ for *n* LLTD responders and *m* other devices. The progress is shown in the stat
 | Query Netgear switches via NSDP | Broadcast query on UDP 63322/63324. |
 | Query mDNS/Zeroconf services | Multicast query on UDP 5353. |
 | Query UPnP devices via SSDP | Multicast query on UDP 1900, then the device descriptions via HTTP. |
+| Identify devices more precisely | Tests about 20 TCP ports per device (one connection per device at a time) and listens for ONVIF, Magic Home and Tuya; takes a few seconds and runs in parallel with the topology tests. |
+| Use device names | Lets DHCP/DNS names refine a generic result (e.g. Echo Show vs. Echo Dot, phones). Cameras are never identified by name. |
 | Ping the whole subnet | Fills the ARP table before scanning (subnets up to /22). |
+| Show the last map at start-up | Shows the previous result immediately while scanning again. |
 | Maximum duration | Time limit for the topology tests. |
 | Language | Windows default, German, English, Spanish or French. |
 
-Settings are stored in `%APPDATA%\NetworkOverview\config.json`.
+Settings are stored in `%APPDATA%\NetworkOverview\config.json`, the last map in `lastmap.json` and
+the identified device types per MAC address in `devices.json` in the same folder. OpenWrt devices
+that do not answer a ping (switched off) are skipped without a warning.
 
 Problems found during a scan (no valid IPv4 address, OpenWrt devices unreachable, LLTD responders that
 cannot receive test frames, …) are shown in a bar above the map; details are in the scan log.
