@@ -57,6 +57,9 @@ namespace NetworkOverview.Core.Lltd
         public bool Flooded = false;
         public bool Valid = false;
         public bool Confirmed = false;
+        // c cannot observe: AtC = every prober not seen at the (reliable) root; measured twice
+        public bool Inferred = false;
+        public bool TrainRefused = false;
         public List<string> AtC = new List<string>();
         public List<string> AtRoot = new List<string>();
         public List<string> Missing = new List<string>();
@@ -625,10 +628,10 @@ namespace NetworkOverview.Core.Lltd
         // ---------------- Phase 2: topology tests ----------------
         //  Test for pair (c,d): X is learned at the root, c sends X->d (switches on the path c..d learn X towards c),
         //  then every other responder a sends a probe to X. If it arrives at c, the path a->root crosses the path c..d.
-        RoundResult Round(string root, string c, string d, List<string> probers, List<string> all)
+        RoundResult Round(string root, string c, string d, List<string> probers, List<string> all, bool inferred = false)
         {
             RoundResult rr = new RoundResult();
-            rr.C = c; rr.D = d;
+            rr.C = c; rr.D = d; rr.Inferred = inferred;
             KeepAlive(all);
             byte[] X = NextSpoof();
             string xs = Fr.Str(X, 0);
@@ -650,24 +653,28 @@ namespace NetworkOverview.Core.Lltd
             List<EmitDesc> t2 = new List<EmitDesc>();
             t2.Add(new EmitDesc(0, (byte)LearnPauseMs, X, Fr.Mac(d)));
             t2.Add(new EmitDesc(0, 5, X, Fr.Mac(d)));
-            if (!EmitAcked(c, t2)) { rr.Failed = true; return rr; }
+            if (!EmitAcked(c, t2)) { rr.Failed = true; rr.TrainRefused = true; return rr; }
 
             // 3. probes
             HashSet<string> atC = new HashSet<string>();
             HashSet<string> atRoot = new HashSet<string>();
             List<string> pending = new List<string>(probers);
-            for (int attempt = 0; attempt < 2 && pending.Count > 0; attempt++)
+            // inferred: a lost probe would be counted at c, so probes not seen at the root are repeated more often
+            for (int attempt = 0; attempt < (inferred ? 4 : 2) && pending.Count > 0; attempt++)
             {
                 foreach (string a in pending) EmitSingle(a, new EmitDesc(1, (byte)LearnPauseMs, Fr.Mac(a), X));
                 Pump(LearnPauseMs + 250);
 
                 bool ok;
-                foreach (string e in Query(c, out ok))
+                if (!inferred)
                 {
-                    string[] p = e.Split('|');
-                    if (p[1] == xs) atC.Add(p[0]);
+                    foreach (string e in Query(c, out ok))
+                    {
+                        string[] p = e.Split('|');
+                        if (p[1] == xs) atC.Add(p[0]);
+                    }
+                    if (!ok) { rr.Failed = true; }
                 }
-                if (!ok) { rr.Failed = true; }
                 if (root == null)
                 {
                     foreach (string e in mapperSeen)
@@ -690,6 +697,13 @@ namespace NetworkOverview.Core.Lltd
                 pending = still;
             }
             mapperSeen.Clear();
+            if (inferred)
+            {
+                // c cannot report: every probe that did not reach the root went to c
+                foreach (string a in probers)
+                    if (atRoot.Contains(a)) rr.AtRoot.Add(a); else rr.AtC.Add(a);
+                return rr;
+            }
             foreach (string a in probers)
             {
                 bool inC = atC.Contains(a), inR = atRoot.Contains(a);
@@ -702,10 +716,11 @@ namespace NetworkOverview.Core.Lltd
         }
 
         // Round with plausibility check and retries
-        RoundResult RoundChecked(string root, string c, string d, bool extra, List<string> all)
+        RoundResult RoundChecked(string root, string c, string d, bool extra, List<string> all, bool inferred = false)
         {
             List<string> probers = new List<string>();
             foreach (string m in all) if (m != c && m != (extra ? d : "")) probers.Add(m);
+            if (inferred) return RoundCheckedInferred(root, c, d, extra, probers, all);
             RoundResult rr = null;
             for (int attempt = 0; attempt < 3; attempt++)
             {
@@ -718,6 +733,39 @@ namespace NetworkOverview.Core.Lltd
                   " missing=" + rr.Missing.Count + (rr.Flooded ? " FLOOD" : "") + (rr.Valid ? "" : " INVALID") +
                   " C[" + Names(rr.AtC) + "] R[" + Names(rr.AtRoot) + "]");
                 if (rr.Valid) break;
+            }
+            if (rr != null && !extra) rr.AtC.Remove(d);
+            return rr;
+        }
+
+        // Round with a responder that cannot observe as c. Lost probes would be counted at c and lost
+        // training frames would send probes to the root, so every result is measured again with fresh test
+        // addresses: it is accepted as soon as two of up to six measurements agree.
+        RoundResult RoundCheckedInferred(string root, string c, string d, bool extra, List<string> probers, List<string> all)
+        {
+            RoundResult rr = null;
+            List<RoundResult> seen = new List<RoundResult>();
+            int refused = 0;
+            for (int attempt = 0; attempt < 6; attempt++)
+            {
+                if (Cancel) break;
+                RoundResult a = Round(root, c, d, probers, all, true);
+                a.DIsExtra = extra;
+                if (a.TrainRefused && ++refused >= 2) return a;
+                if (rr == null) rr = a;
+                if (a.Failed) continue;
+                // control probe: d lies on the path c..d, so its probe must not arrive at the root
+                bool plausible = extra || a.AtC.Contains(d);
+                RoundResult match = null;
+                if (plausible)
+                    foreach (RoundResult b in seen)
+                        if (SameSet(a.AtC, b.AtC) && SameSet(a.AtRoot, b.AtRoot)) { match = b; break; }
+                a.Valid = match != null;
+                L("round c=" + c + " d=" + d + (extra ? " (x)" : "") + " (inferred) atC=" + a.AtC.Count + " atRoot=" + a.AtRoot.Count +
+                  (a.Valid ? "" : seen.Count == 0 && plausible ? " (first)" : " INVALID") + " C[" + Names(a.AtC) + "] R[" + Names(a.AtRoot) + "]");
+                rr = a;
+                if (a.Valid) break;
+                if (plausible) seen.Add(a);
             }
             if (rr != null && !extra) rr.AtC.Remove(d);
             return rr;
@@ -786,20 +834,29 @@ namespace NetworkOverview.Core.Lltd
             foreach (string m in resp) if (m != root) all.Add(m);
             List<string> wired = new List<string>();
             foreach (string m in all) if (!wirelessSet.Contains(m) && observers.Contains(m)) wired.Add(m);
+            // Wired responders that cannot observe still send: with a reliable root (the wired mapper itself
+            // or a wired observer) every probe not seen at the root went to c ("inferred" rounds).
+            bool reliableRoot = root == null ? MyWired : !wirelessSet.Contains(root) && observers.Contains(root);
+            List<string> inferredC = new List<string>();
+            if (reliableRoot)
+                foreach (string m in all) if (!wirelessSet.Contains(m) && !observers.Contains(m)) inferredC.Add(m);
 
             List<string[]> plan = new List<string[]>();
             for (int i = 0; i < all.Count; i++)
                 for (int j = i + 1; j < all.Count; j++)
                 {
                     string a = all[i], b = all[j];
-                    if (wired.Contains(a)) plan.Add(new string[] { a, b, "" });
-                    else if (wired.Contains(b)) plan.Add(new string[] { b, a, "" });
+                    if (wired.Contains(a)) plan.Add(new string[] { a, b, "", "" });
+                    else if (wired.Contains(b)) plan.Add(new string[] { b, a, "", "" });
+                    else if (inferredC.Contains(a)) plan.Add(new string[] { a, b, "", "i" });
+                    else if (inferredC.Contains(b)) plan.Add(new string[] { b, a, "", "i" });
                 }
             foreach (string x in ExtraMacs)
             {
                 string h = x.ToLowerInvariant();
                 if (h == meStr || hosts.ContainsKey(h) || wirelessSet.Contains(h)) continue;
-                foreach (string c in wired) plan.Add(new string[] { c, h, "x" });
+                foreach (string c in wired) plan.Add(new string[] { c, h, "x", "" });
+                foreach (string c in inferredC) plan.Add(new string[] { c, h, "x", "i" });
             }
             RoundsTotal = plan.Count;
             L("plan: " + plan.Count + " rounds, root=" + RootMac);
@@ -811,10 +868,17 @@ namespace NetworkOverview.Core.Lltd
                 if (Cancel || clock.Elapsed.TotalSeconds > MaxSeconds) { Partial = true; break; }
                 RoundsDone = RoundsDone + 1;
                 Progress = "round";
-                bool extra = step[2] == "x";
-                if (!all.Contains(step[0]) || !wired.Contains(step[0]) || (!extra && !all.Contains(step[1]))) continue;
-                RoundResult rr = RoundChecked(root, step[0], step[1], extra, all);
+                bool extra = step[2] == "x", inf = step[3] == "i";
+                if (!all.Contains(step[0]) || !(inf ? inferredC : wired).Contains(step[0]) || (!extra && !all.Contains(step[1]))) continue;
+                RoundResult rr = RoundChecked(root, step[0], step[1], extra, all, inf);
                 if (rr == null) continue;
+                if (inf && rr.TrainRefused)
+                {
+                    // lltd with --observe no (or the old "auto") refuses trains: no inferred rounds for c
+                    inferredC.Remove(step[0]);
+                    L("cannot train: " + step[0]);
+                    continue;
+                }
                 Rounds.Add(rr);
                 if (LostAtObserver(rr, all.Count - 1))
                 {
@@ -859,7 +923,7 @@ namespace NetworkOverview.Core.Lltd
             foreach (KeyValuePair<string, RoundResult> kv in bestX)
             {
                 if (Cancel || clock.Elapsed.TotalSeconds > MaxSeconds) { Partial = true; break; }
-                RoundResult again = RoundChecked(root, kv.Value.C, kv.Key, true, all);
+                RoundResult again = RoundChecked(root, kv.Value.C, kv.Key, true, all, kv.Value.Inferred);
                 if (again == null) continue;
                 if (again.Valid && SameSet(Only(again.AtC, all), Only(kv.Value.AtC, all))) { kv.Value.Confirmed = true; continue; }
                 kv.Value.Valid = false;
