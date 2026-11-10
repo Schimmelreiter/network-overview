@@ -123,13 +123,15 @@ repetitions and confirmation rounds make the result robust against lost frames.
 Some managed switches (e.g. Netgear Plus) flood frames addressed to their own management address
 to all ports. Their position is therefore checked separately: a responder sends a probe to the
 management address, and the responders that receive it are the ones attached directly to that switch.
-Responders that do not record probes reliably (e.g. behind an internal switch of a set-top box) are
-only used as senders. OpenWrt access points connected to another OpenWrt AP via Wi-Fi are shown as
+Responders that cannot record probes (e.g. behind an internal switch of a set-top box) can still
+act as *c*: with a wired mapper or wired observer as root, every probe that does not arrive at the
+root went to *c*. Such "inferred" rounds are repeated with fresh test addresses and only accepted
+when two measurements agree. OpenWrt access points connected to another OpenWrt AP via Wi-Fi are shown as
 Wi-Fi repeaters below that AP.
 
 Limits: a switch with only a single device behind it cannot be detected (Windows 7 could not
 either), unless it has its own MAC address such as managed switches. The same applies if the only
-responder behind a switch cannot act as observer. Wi-Fi clients cannot send
+responder behind a switch can neither observe nor send training frames. Wi-Fi clients cannot send
 frames with foreign sender addresses; they are assigned via OpenWrt data or their BSSID.
 
 ## Building

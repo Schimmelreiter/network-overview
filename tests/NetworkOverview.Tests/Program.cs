@@ -20,6 +20,10 @@ var tests = new List<(string Name, Action Body)>
     ("Topology: responder behind an internal switch is not used as observer", TopologyTests.EmbeddedSwitchResponder),
     ("Topology: observer that drops probes from other responders is demoted", TopologyTests.PartlyDeafResponder),
     ("Topology: switch that floods frames to its management address", TopologyTests.FloodingManagement),
+    ("Topology: inferred rounds, embedded switch (living room)", () => TopologyTests.InferredRounds(0.0, true, 11)),
+    ("Topology: inferred rounds, deaf responder (living room)", () => TopologyTests.InferredRounds(0.0, false, 12)),
+    ("Topology: inferred rounds with 3% loss per hop", () => TopologyTests.InferredRounds(0.03, true, 13)),
+    ("Stress: inferred rounds with 3% loss, seeds 21-26", () => { foreach (var sd in new[] { 21, 22, 23, 24, 25, 26 }) { try { TopologyTests.InferredRounds(0.03, sd % 2 == 0, sd); } catch (Exception e) { throw new Exception("seed " + sd + ": " + e.Message); } } }),
     ("Model + layout: merge sources, no crossings", ModelTests.MergeAndLayout),
     ("Model: OpenWrt AP connected via Wi-Fi becomes a repeater", ModelTests.WifiRepeater),
     ("Layout: wireless group below wired switch (issue screenshot)", ModelTests.WirelessBelowWired),
@@ -34,6 +38,7 @@ var tests = new List<(string Name, Action Body)>
 };
 
 if (args.Length > 0) tests = tests.Where(t => args.Any(a => t.Name.Contains(a, StringComparison.OrdinalIgnoreCase))).ToList();
+else tests = tests.Where(t => !t.Name.StartsWith("Stress")).ToList();   // long-running, only on request
 int failed = 0;
 foreach (var (name, body) in tests)
 {
@@ -59,8 +64,12 @@ sealed class TestNet
     public SimNet Net = new();
     public Dictionary<string, SimNode> H = new();
     public SimNode R, U, N1, N2, AP;
+    public SimNode? W;
 
-    public TestNet(double loss, bool mapperWired, int seed, params string[] deaf)
+    public TestNet(double loss, bool mapperWired, int seed, params string[] deaf) : this(loss, mapperWired, seed, false, deaf) { }
+
+    // livingRoom: u2 sits alone (as the only responder) on an extra switch W below U, with two devices without LLTD
+    public TestNet(double loss, bool mapperWired, int seed, bool livingRoom, params string[] deaf)
     {
         Net.Loss = loss;
         Net.Rnd = new Random(seed);
@@ -70,7 +79,14 @@ sealed class TestNet
         Add("GW", "02:00:00:00:00:10", false, R);
         Add("r1", "02:00:00:00:00:11", true, R);
         Add("u1", "02:00:00:00:00:21", true, U);
-        Add("u2", "02:00:00:00:00:22", true, U);
+        if (livingRoom)
+        {
+            W = Net.Switch("W", false); Net.Link(U, W);
+            Add("u2", "02:00:00:00:00:22", true, W);
+            Add("x1", "02:00:00:00:00:71", false, W);
+            Add("x2", "02:00:00:00:00:72", false, W);
+        }
+        else Add("u2", "02:00:00:00:00:22", true, U);
         Add("u3", "02:00:00:00:00:23", false, U);
         Add("n1a", "02:00:00:00:00:31", true, N1);
         Add("n1b", "02:00:00:00:00:32", true, N1);
@@ -95,7 +111,7 @@ sealed class TestNet
     public MapperJob Map(bool wired)
     {
         var job = new MapperJob { MyMac = Mac("M"), MyWired = wired, DiscoverMs = 600, LearnPauseMs = 5, IO = new SimIO(Net, H["M"]) };
-        foreach (var x in new[] { "GW", "u3", "N1mgmt", "N2mgmt", "APcpu" }) job.ExtraMacs.Add(Mac(x));
+        foreach (var x in new[] { "GW", "u3", "N1mgmt", "N2mgmt", "APcpu", "x1", "x2" }) if (H.ContainsKey(x)) job.ExtraMacs.Add(Mac(x));
         job.WirelessMacs.Add(Mac("w1")); job.WirelessMacs.Add(Mac("w2"));
         job.SwitchMacs.Add(Mac("N1mgmt")); job.SwitchMacs.Add(Mac("N2mgmt"));
         job.Run();
@@ -142,7 +158,7 @@ static partial class TopologyTests
         var t = new TestNet(0.0, true, 4, "u2");
         var job = t.Map(true);
         Assert.True(job.NonObservers.Contains(t.Mac("u2")), "u2 detected as non-observer");
-        Assert.True(!job.Rounds.Any(r => r.C == t.Mac("u2")), "u2 never used as observer");
+        Assert.True(job.Rounds.Where(r => r.C == t.Mac("u2")).All(r => r.Inferred), "u2 only used in inferred rounds");
         Assert.True(job.Rounds.All(r => r.Valid || r.Confirmed || r.DIsExtra), "no invalid responder rounds: " +
             string.Join("; ", job.Rounds.Where(r => !r.Valid).Select(r => r.C + "/" + r.D)));
         string expected = "{apl1,w1}\n  APcpu\n  apl1\n  w1\n{n1a,n1b,r1}\n  {n1a,n1b}\n    N1mgmt\n    n1a\n    n1b\n  GW\n  r1\n{n2a}\n  N2mgmt\n  n2a\nM\nu1\nu2\nu3\n";
@@ -157,11 +173,32 @@ static partial class TopologyTests
         t.H["u2"].EmbeddedSwitch = true;
         var job = t.Map(true);
         Assert.True(job.NonObservers.Contains(t.Mac("u2")), "u2 detected as non-observer");
-        Assert.True(!job.Rounds.Any(r => r.C == t.Mac("u2")), "u2 never used as observer");
+        Assert.True(job.Rounds.Where(r => r.C == t.Mac("u2")).All(r => r.Inferred), "u2 only used in inferred rounds");
+        Assert.True(job.Rounds.Any(r => r.C == t.Mac("u2")), "u2 used as c");
         Assert.True(job.Rounds.All(r => r.Valid || r.Confirmed || r.DIsExtra), "no invalid responder rounds: " +
             string.Join("; ", job.Rounds.Where(r => !r.Valid).Select(r => r.C + "/" + r.D)));
         string expected = "{apl1,w1}\n  APcpu\n  apl1\n  w1\n{n1a,n1b,r1}\n  {n1a,n1b}\n    N1mgmt\n    n1a\n    n1b\n  GW\n  r1\n{n2a}\n  N2mgmt\n  n2a\nM\nu1\nu2\nu3\n";
         Assert.Equal(expected, t.Describe(job.Tree), "tree with embedded-switch responder");
+    }
+
+    const string LivingRoomTree = "{apl1,w1}\n  APcpu\n  apl1\n  w1\n{n1a,n1b,r1}\n  {n1a,n1b}\n    N1mgmt\n    n1a\n    n1b\n  GW\n  r1\n{n2a}\n  N2mgmt\n  n2a\n{u2}\n  u2\n  x1\n  x2\nM\nu1\nu3\n";
+
+    // The only responder on a switch cannot observe (ultimo4k in the living room): inferred rounds find the switch.
+    public static void InferredRounds(double loss, bool embedded, int seed)
+    {
+        var t = new TestNet(loss, true, seed, true);
+        if (embedded) t.H["u2"].EmbeddedSwitch = true; else t.H["u2"].Deaf = true;
+        var job = t.Map(true);
+        Assert.True(job.Error.Length == 0, "mapper error: " + job.Error);
+        Assert.True(job.NonObservers.Contains(t.Mac("u2")), "u2 detected as non-observer");
+        var u2 = job.Rounds.Where(r => r.C == t.Mac("u2")).ToList();
+        Assert.True(u2.Count > 0 && u2.All(r => r.Inferred), "u2 used as c, only inferred");
+        if (loss == 0)
+            Assert.True(u2.All(r => r.Valid), "all inferred rounds valid: " + string.Join("; ", u2.Where(r => !r.Valid).Select(r => r.D)));
+        // ground truth for the devices behind W: nothing but u2 is on that side, so no prober may count as "at c"
+        var wrong = u2.Where(r => r.Valid && (r.D == t.Mac("x1") || r.D == t.Mac("x2")) && r.AtC.Count > 0).ToList();
+        Assert.True(wrong.Count == 0, "falsely valid inferred rounds: " + string.Join("; ", wrong.Select(r => r.D + " atC=" + r.AtC.Count)));
+        Assert.Equal(LivingRoomTree, t.Describe(job.Tree), "tree with living-room switch");
     }
 
     // Netgear Plus switches flood frames addressed to their own management MAC (GS116Ev2 at Hauke's):
