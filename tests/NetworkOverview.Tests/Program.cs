@@ -459,6 +459,7 @@ static class MiscTests
         Assert.Equal(DeviceType.HeatingController, K("88:57:21:c0:fc:e8", "", ems).Type, "ems-esp");
         var mh = F(5577); mh.MagicHomeModel = "AK001-ZJ21412";
         Assert.Equal(DeviceType.Lamp, K("08:65:f0:7c:04:23", "", mh).Type, "Magic Home");
+        Assert.Equal(DeviceType.Lamp, K("08:65:f0:7c:04:23", "", F(5577)).Type, "Magic Home port without discovery answer");
         // Fire TV via SSDP USN, without vendor (LAN adapter MAC) and without name
         var sd = new SsdpDevice(); sd.Usns.Add("uuid:NFANDROID2-PRV-FIRETVSTICK2021-AMAZOAFTKA-20778-6B9B::upnp:rootdevice");
         Assert.Equal(DeviceType.FireTv, K("3c:18:a0:a1:b8:45", "", null, sd, wireless: false).Type, "Fire TV SSDP");
@@ -602,7 +603,7 @@ static class MiscTests
         Assert.Equal(DeviceType.Camera, M("e0:09:bf:67:37:eb", ""), "Wansview (Tong Bo Wei) without name");
         Assert.Equal(DeviceType.AirConditioner, M("3c:e1:a1:9a:62:80", "Klima-Buero"), "Fujitsu General Wi-Fi adapter");
         Assert.Equal(DeviceType.Iot, M("00:1c:c2:b4:d6:c3", "Luefter-Bad"), "Dreo fan heater");
-        Assert.Equal(DeviceType.Iot, M("08:65:f0:7c:04:23", "X-Buero-Mitte"), "Zengge smart lamp");
+        Assert.Equal(DeviceType.Lamp, M("08:65:f0:7c:04:23", "X-Buero-Mitte"), "Zengge smart lamp");
         Assert.Equal(DeviceType.Iot, M("1c:69:20:2e:85:38", "X-Sense-Basis"), "X-Sense base station");
         Assert.Equal(DeviceType.Iot, M("7c:fa:80:17:6f:81", ""), "Worx Landroid without name");
         Assert.Equal(DeviceType.FireTv, DeviceClassifier.Classify("", "Amazon-WZ", null, false, null, false), "wired Amazon device");

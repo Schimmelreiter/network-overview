@@ -162,6 +162,7 @@ public static class DeviceClassifier
             if (fp.Cert(@"O=TPRI\b") && (fp.Has(554) || fp.Has(2020))) return R(DeviceType.Camera, "Src_Fingerprint", "Tapo");
             if (fp.Server("^ems-esp") || fp.Banner("EMS-ESP")) return R(DeviceType.HeatingController, "Src_Fingerprint", "EMS-ESP");
             if (fp.MagicHomeModel.Length > 0) return R(DeviceType.Lamp, "Src_Fingerprint", "Magic Home");
+            if (fp.Has(5577) && Has(vendor, "Zengge")) return R(DeviceType.Lamp, "Src_Fingerprint", "Magic Home (5577)");
         }
 
         // --- 3. Amazon: Echo or Fire TV ---
@@ -213,6 +214,7 @@ public static class DeviceClassifier
         if (prefix == "3c:e1:a1") return R(DeviceType.AirConditioner, "Src_Vendor", "Fujitsu General Wi-Fi");  // USI module of the FGL adapter
         if (Has(vendor, @"^(AltoBeam|SHENZHEN TONG BO WEI)")) return R(DeviceType.Camera, "Src_Vendor", "Wansview Wi-Fi");
         if (Has(vendor, @"Sonos|Roku|Bose|Yamaha|Denon|Harman")) return R(DeviceType.MediaPlayer, "Src_Vendor");
+        if (Has(vendor, "Zengge")) return R(DeviceType.Lamp, "Src_Vendor", "Magic Home");   // makes LED lamps and LED controllers only
 
         // --- 6. generic IoT evidence ---
         if (fp != null && fp.Tuya) return R(DeviceType.Iot, "Src_Fingerprint", "Tuya");

@@ -163,9 +163,15 @@ public sealed class ScanController
             fpIps.UnionWith(ssdp.Select(x => x.IPv4));
             fpIps.RemoveWhere(i => i.Length == 0 || !MacUtil.SameSubnet(i, ad.IPv4, ad.Prefix));
             string bcast = Broadcast(ad.IPv4, ad.Prefix);
+            // Magic Home lamps (Zengge MAC) are asked directly as well
+            var ipOfMac = new Dictionary<string, string>();
+            foreach (var nb in neighbors) ipOfMac.TryAdd(nb.Mac, nb.IPv4);
+            foreach (var o in owrt.Where(o => o.Ok)) foreach (var (mac, l) in o.Leases) if (l.IPv4.Length > 0) ipOfMac.TryAdd(mac, l.IPv4);
+            var zenggeIps = ipOfMac.Where(kv => Devices.VendorDb.Lookup(kv.Key).StartsWith("JM Zengge", StringComparison.OrdinalIgnoreCase))
+                                   .Select(kv => kv.Value).Where(fpIps.Contains).ToList();
             fpTask = Task.Run(() =>
             {
-                try { fingerprints = Fingerprint.Run(IPAddress.Parse(ad.IPv4), bcast, fpIps, 500, Log, fpCts.Token); }
+                try { fingerprints = Fingerprint.Run(IPAddress.Parse(ad.IPv4), bcast, fpIps, 500, Log, fpCts.Token, zenggeIps); }
                 catch (Exception ex) { Log("Fingerprint: " + ex.Message); }
             });
             if (!npcap) { P(L.T("StatusFingerprint")); fpTask.Wait(); }

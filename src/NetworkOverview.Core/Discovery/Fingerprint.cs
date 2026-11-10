@@ -64,8 +64,9 @@ public static class Fingerprint
     static readonly HashSet<int> NoBanner = new() { 502, 1883, 2020, 5541, 5577, 6668, 55443 };
 
     public static Dictionary<string, FingerprintInfo> Run(IPAddress local, string broadcast, IEnumerable<string> ips,
-        int timeoutMs, Action<string>? log = null, CancellationToken ct = default)
+        int timeoutMs, Action<string>? log = null, CancellationToken ct = default, ICollection<string>? magicHomeIps = null)
     {
+        var zengge = magicHomeIps ?? Array.Empty<string>();
         var result = new ConcurrentDictionary<string, FingerprintInfo>();
         FingerprintInfo Get(string ip) => result.GetOrAdd(ip, i => new FingerprintInfo { IPv4 = i });
         var targets = ips.Where(i => i.Length > 0 && i != local.ToString()).Distinct().ToList();
@@ -103,6 +104,11 @@ public static class Fingerprint
             try { await Describe(j.f, j.p, cts.Token); } catch (Exception) { }
             finally { bsem.Release(); }
         })).ToArray());
+
+        // Magic Home: broadcasts over Wi-Fi are easily missed by devices in power-save mode, ask the candidates directly
+        var mhCandidates = result.Values.Where(f => f.MagicHomeModel.Length == 0 && (f.Has(5577) || zengge.Contains(f.IPv4))).Select(f => f.IPv4)
+            .Concat(zengge.Where(ip => !result.ContainsKey(ip))).Distinct().ToList();
+        if (mhCandidates.Count > 0) Safe("Magic Home", log, () => MagicHomeUnicast(local, mhCandidates, Get));
 
         // motionEye: MJPEG streams on the usual ports
         foreach (var f in result.Values.Where(f => f.Server("motionEye")).ToList())
@@ -346,6 +352,25 @@ public static class Fingerprint
             var f = get(ep.Address.ToString());
             lock (f) f.MagicHomeModel = parts[2].Trim();
         });
+    }
+
+    static void MagicHomeUnicast(IPAddress local, List<string> ips, Func<string, FingerprintInfo> get)
+    {
+        using var s = UdpSocket(local, 0, false, local);
+        var q = Encoding.ASCII.GetBytes("HF-A11ASSISTHREAD");
+        var pending = new HashSet<string>(ips);
+        for (int attempt = 0; attempt < 3 && pending.Count > 0; attempt++)
+        {
+            foreach (var ip in pending) try { s.SendTo(q, new IPEndPoint(IPAddress.Parse(ip), 48899)); } catch (SocketException) { }
+            Receive(s, 1200, CancellationToken.None, (ep, d, n) =>
+            {
+                var parts = Encoding.ASCII.GetString(d, 0, n).Split(',');
+                if (parts.Length < 3 || parts[0] != ep.Address.ToString()) return;
+                var f = get(ep.Address.ToString());
+                lock (f) f.MagicHomeModel = parts[2].Trim();
+                pending.Remove(ep.Address.ToString());
+            });
+        }
     }
 
     static void TuyaListen(int port, Func<string, FingerprintInfo> get, CancellationToken ct)
