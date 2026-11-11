@@ -31,6 +31,10 @@ public sealed class OpenWrtInfo
     public Dictionary<string, OpenWrtStation> Stations { get; } = new();    // MAC -> station
     public Dictionary<string, OpenWrtLease> Leases { get; } = new();        // MAC -> lease
     public Dictionary<string, string> Arp { get; } = new();                 // MAC -> IPv4
+    public Dictionary<string, string> DhcpVendor { get; } = new();          // MAC -> DHCP vendor class (option 60)
+    /// <summary>dnsmasq logs DHCP details (uci dhcp.@dnsmasq[0].logdhcp=1); only then vendor classes are known.</summary>
+    public bool LogDhcp { get; set; }
+    public bool DhcpServer => Leases.Count > 0;
     public bool Ok => Error.Length == 0 && MainMac.Length > 0;
 }
 
@@ -56,6 +60,8 @@ if command -v iw >/dev/null 2>&1; then
 fi
 [ -r /tmp/dhcp.leases ] && sed 's/^/##LEASE /' /tmp/dhcp.leases
 awk 'NR>1{print "##ARP",$1,$4,$6}' /proc/net/arp
+echo "##LOGDHCP $(uci -q get dhcp.@dnsmasq[0].logdhcp)"
+logread 2>/dev/null | grep -E 'dnsmasq-dhcp.*( vendor class: | DHCP(DISCOVER|REQUEST|ACK)\()' | tail -n 4000 | sed 's/^/##DHCP /'
 """;
 
     static readonly Regex TargetRx = new(@"^[\w.\-]+@?[\w.\-:\[\]]*$", RegexOptions.Compiled);
@@ -173,6 +179,23 @@ awk 'NR>1{print "##ARP",$1,$4,$6}' /proc/net/arp
                 if (MacUtil.IsUsable(mac)) o.Arp[mac] = m.Groups[1].Value;
             }
         }
+        // DHCP details: with logdhcp every line of one transaction carries its transaction number
+        var macOfXid = new Dictionary<string, string>();
+        var classOfXid = new List<(string Xid, string Class)>();
+        foreach (var raw in output.Split('\n'))
+        {
+            var line = raw.TrimEnd('\r', ' ');
+            Match m;
+            if ((m = Regex.Match(line, @"^##LOGDHCP (\S*)")).Success) o.LogDhcp = m.Groups[1].Value == "1";
+            else if ((m = Regex.Match(line, @"^##DHCP .*dnsmasq-dhcp\[\d+\]: (\d+) vendor class: (.+)$")).Success)
+                classOfXid.Add((m.Groups[1].Value, m.Groups[2].Value.Trim()));
+            else if ((m = Regex.Match(line, @"^##DHCP .*dnsmasq-dhcp\[\d+\]: (\d+) DHCP(?:DISCOVER|REQUEST|ACK)\(\S+\) (?:\S+ )?([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})")).Success)
+                macOfXid[m.Groups[1].Value] = MacUtil.Normalize(m.Groups[2].Value);
+        }
+        foreach (var (xid, cls) in classOfXid)
+            if (macOfXid.TryGetValue(xid, out var mac) && mac.Length > 0) o.DhcpVendor[mac] = cls;   // the latest wins
+        if (o.DhcpVendor.Count > 0) o.LogDhcp = true;
+
         if (o.Interfaces.TryGetValue("br-lan", out var br)) o.MainMac = br;
         else if (o.Interfaces.TryGetValue("eth0", out var eth)) o.MainMac = eth;
         else o.MainMac = o.Interfaces.Values.FirstOrDefault() ?? "";

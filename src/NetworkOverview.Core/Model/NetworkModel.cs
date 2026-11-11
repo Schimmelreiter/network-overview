@@ -54,6 +54,7 @@ public sealed class Node
     public string Source { get; set; } = "";
     public string SourceDetail { get; set; } = "";
     public string OpenPorts { get; set; } = "";
+    public string DhcpVendor { get; set; } = "";
     /// <summary>Video streams offered by the device (e.g. motionEye MJPEG streams).</summary>
     public List<string> Streams { get; } = new();
 

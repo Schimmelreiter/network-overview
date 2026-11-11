@@ -352,6 +352,9 @@ public static class ModelBuilder
         }
 
         // 14. device types
+        foreach (var o in d.OpenWrt.Where(o => o.Ok))
+            foreach (var (mac, cls) in o.DhcpVendor)
+                if (ByMac(mac) is { } dn && dn.DhcpVendor.Length == 0) dn.DhcpVendor = cls;
         foreach (var n in m.All)
         {
             if (n.Kind != NodeKind.Device) continue;
@@ -360,7 +363,7 @@ public static class ModelBuilder
             d.Fingerprints.TryGetValue(n.IPv4, out var fp);
             var c = DeviceClassifier.Classify(new DeviceEvidence
             {
-                Vendor = n.Vendor, Mac = n.Mac, Name = n.Name, Mdns = mh, Ssdp = sd, Fingerprint = fp, Lltd = n.Lltd,
+                Vendor = n.Vendor, Mac = n.Mac, Name = n.Name, Mdns = mh, Ssdp = sd, Fingerprint = fp, Lltd = n.Lltd, DhcpVendor = n.DhcpVendor,
                 Wireless = n.Wireless ? true : n.InTree ? false : null, UseNames = d.UseNames,
             });
             string fpModel = fp?.Model() ?? "";

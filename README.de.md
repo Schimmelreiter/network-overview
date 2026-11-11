@@ -39,6 +39,12 @@ ermittelt die Switch-Struktur mit demselben Verfahren wie Windows 7: dem Protoko
   MAC-Adresse. Vom Benutzer vergebene Namen (DHCP/DNS) verfeinern nur noch zuletzt ein allgemeines
   Ergebnis und lassen sich abschalten. Die Details zeigen, woran ein Gerät erkannt wurde. Einmal
   erkannt, behält ein Gerät seinen Typ, auch wenn es später im Standby oder ausgeschaltet ist.
+- **DHCP-Herstellerkennungen** aus dem Protokoll des OpenWrt-Routers (Option 60, z. B.
+  `android-dhcp-14`, `MSFT 5.0`): Android-Geräte werden auch im Standby erkannt. dnsmasq
+  protokolliert sie nur, wenn die DHCP-Protokollierung auf dem Router eingeschaltet ist:
+  `uci set dhcp.@dnsmasq[0].logdhcp=1; uci commit dhcp; /etc/init.d/dnsmasq restart`.
+  Ein Gerät erscheint nach seiner nächsten DHCP-Erneuerung; das Scan-Protokoll vermerkt, wenn der
+  Router sie nicht protokolliert.
 - **Letzte Karte beim Start**: Die vorige Karte erscheint sofort, während neu gescannt wird.
 - Hell- und Dunkelmodus nach Windows-Einstellung, Sprachen Deutsch, Englisch, Spanisch und
   Französisch.
