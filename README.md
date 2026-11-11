@@ -23,6 +23,9 @@ protocol.
   OpenWrt routers and access points.
 - **Netgear switches via NSDP** (ProSAFE Plus / Easy Smart, e.g. GS105E/GS108E): name, model,
   IP address and port link state; the switch found by LLTD is labelled accordingly.
+- **TP-Link Easy Smart switches** (e.g. TL-SG105E, TL-SG108E, TL-SG116E) via their configuration
+  protocol (UDP 29808/29809, no login needed): name, model with hardware version, IP address,
+  firmware and port count; the switch found by LLTD is labelled accordingly.
 - **mDNS / DNS-SD (Bonjour, Avahi, Zeroconf)**: names, models and services, e.g. Cast devices,
   printers, AirPlay, Fire TV, ESPHome, HomeKit.
 - **SSDP / UPnP**: names and models from UPnP device descriptions (TVs, receivers, routers, newer
@@ -78,6 +81,7 @@ for *n* LLTD responders and *m* other devices. The progress is shown in the stat
 | Determine topology via LLTD | Runs the switch detection. Without it only discovery is done. |
 | Also place devices without LLTD | Places routers, printers, phones etc. into the structure (more tests). |
 | Query Netgear switches via NSDP | Broadcast query on UDP 63322/63324. |
+| Query TP-Link Easy Smart switches | Broadcast query on UDP 29808, answers on UDP 29809 (the same as TP-Link's Easy Smart Configuration Utility, which must not run at the same time). |
 | Query mDNS/Zeroconf services | Multicast query on UDP 5353. |
 | Query UPnP devices via SSDP | Multicast query on UDP 1900, then the device descriptions via HTTP. |
 | Identify devices more precisely | Tests about 20 TCP ports per device (one connection per device at a time) and listens for ONVIF, Magic Home and Tuya; takes a few seconds and runs in parallel with the topology tests. |

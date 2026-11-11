@@ -105,6 +105,18 @@ public sealed class ScanController
             if (nsdp.Count == 0) Log("NSDP: no answer");
             foreach (var d in nsdp) Log($"NSDP: {d.Model} '{d.Name}' {d.Mac} {d.IPv4} ports: {string.Join(" ", d.Ports)}");
         }
+        if (cfg.EasySmart && ad.IPv4.Length > 0 && !cancel)
+        {
+            P(L.T("StatusEasySmart"));
+            var es = new List<NsdpDevice>();
+            try { es = EasySmart.Discover(ad.IPv4, ad.Mac, Broadcast(ad.IPv4, ad.Prefix), 1500, Log); } catch (Exception ex) { Log("Easy Smart: " + ex.Message); }
+            if (es.Count == 0) Log("Easy Smart: no answer");
+            foreach (var d in es)
+            {
+                Log($"Easy Smart: {d.Model} '{d.Name}' {d.Mac} {d.IPv4} firmware {d.Firmware}, {d.PortCount} ports");
+                if (!nsdp.Any(x => MacUtil.Normalize(x.Mac) == MacUtil.Normalize(d.Mac))) nsdp.Add(d);
+            }
+        }
 
         var mdns = new List<MdnsHost>();
         if (cfg.Mdns && ad.IPv4.Length > 0 && !cancel)

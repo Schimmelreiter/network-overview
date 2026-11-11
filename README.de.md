@@ -23,6 +23,9 @@ ermittelt die Switch-Struktur mit demselben Verfahren wie Windows 7: dem Protoko
   OpenWrt-Routern und -Zugangspunkten.
 - **Netgear-Switches per NSDP** (ProSAFE Plus / Easy Smart, z. B. GS105E/GS108E): Name, Modell,
   IP-Adresse und Link-Status der Ports; der per LLTD gefundene Switch wird entsprechend benannt.
+- **TP-Link-Easy-Smart-Switches** (z. B. TL-SG105E, TL-SG108E, TL-SG116E) über ihr
+  Konfigurationsprotokoll (UDP 29808/29809, ohne Anmeldung): Name, Modell mit Hardware-Version,
+  IP-Adresse, Firmware und Portanzahl; der per LLTD gefundene Switch wird entsprechend benannt.
 - **mDNS / DNS-SD (Bonjour, Avahi, Zeroconf)**: Namen, Modelle und Dienste, z. B. Cast-Geräte,
   Drucker, AirPlay, Fire TV, ESPHome, HomeKit.
 - **SSDP / UPnP**: Namen und Modelle aus UPnP-Gerätebeschreibungen (Fernseher, Receiver, Router,
@@ -81,6 +84,7 @@ dauert wenige Sekunden bis mehrere Minuten – grob *n²/2 + n·m* Tests zu je e
 | Topologie per LLTD ermitteln | Führt die Switch-Erkennung aus. Ohne sie nur die Erkennung der Geräte. |
 | Geräte ohne LLTD ebenfalls einordnen | Ordnet Router, Drucker, Handys usw. in die Struktur ein (mehr Tests). |
 | Netgear-Switches per NSDP abfragen | Broadcast-Abfrage auf UDP 63322/63324. |
+| TP-Link-Easy-Smart-Switches abfragen | Broadcast-Abfrage auf UDP 29808, Antworten auf UDP 29809 (wie das Easy Smart Configuration Utility von TP-Link, das nicht gleichzeitig laufen darf). |
 | mDNS/Zeroconf-Dienste abfragen | Multicast-Abfrage auf UDP 5353. |
 | UPnP-Geräte per SSDP abfragen | Multicast-Abfrage auf UDP 1900, danach die Gerätebeschreibungen per HTTP. |
 | Geräte genauer bestimmen | Prüft je Gerät etwa 20 TCP-Ports (je Gerät nur eine Verbindung gleichzeitig) und hört auf ONVIF, Magic Home und Tuya; dauert wenige Sekunden und läuft parallel zu den Topologietests. |
