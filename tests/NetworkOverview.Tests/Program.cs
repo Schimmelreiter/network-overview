@@ -588,7 +588,12 @@ static class MiscTests
         var c = K("8c:b8:4a:f6:db:89", "android-dhcp-14");
         Assert.Equal(DeviceType.Phone, c.Type, "Android phone"); Assert.Equal("Src_Dhcp", c.Source, "source"); Assert.Equal("Android 14", c.Detail, "detail");
         Assert.Equal(DeviceType.Tablet, K("8c:83:e1:f4:90:aa", "android-dhcp-13", "quattrotab").Type, "tablet by name");
-        Assert.Equal(DeviceType.Tv, K("24:fc:e5:90:83:d4", "android-dhcp-11", "", false).Type, "wired Android = TV");
+        Assert.Equal(DeviceType.Phone, K("00:50:b6:6c:bf:11", "android-dhcp-14", "", false).Type, "Android phone on a USB-C dock");
+        Assert.Equal(DeviceType.Tv, DeviceClassifier.Classify(new DeviceEvidence { Vendor = "TP Vision Belgium NV", DhcpVendor = "android-dhcp-11", Wireless = false }).Type, "Android TV by vendor");
+        // multi-boot PC: the OS from DHCP is not remembered
+        var kd = new KnownDevices();
+        kd.Apply("d8:43:ae:43:15:1a", new Classification(DeviceType.Computer, "Src_Dhcp", "Windows"), "", out _);
+        Assert.True(kd.Devices.Count == 0, "Windows not remembered");
         Assert.Equal(DeviceType.EchoDot, DeviceClassifier.Classify(new DeviceEvidence { Mac = "18:0b:1b:27:97:ec", Vendor = VendorDb.Lookup("18:0b:1b:27:97:ec"),
             DhcpVendor = "android-dhcp-9", Fingerprint = new FingerprintInfo { Open = { [4070] = "" } }, Wireless = true }).Type, "Fire OS Echo stays Echo");
         Assert.Equal(DeviceType.Computer, K("d8:43:ae:43:15:1a", "MSFT 5.0").Type, "Windows");
