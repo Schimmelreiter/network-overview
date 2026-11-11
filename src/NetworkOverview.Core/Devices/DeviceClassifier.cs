@@ -113,9 +113,14 @@ public static class DeviceClassifier
     {
         var c = Evidence(e);
         if (!e.UseNames) return c;
-        // Android says nothing about phone or tablet
-        if (c.Type == DeviceType.Phone && c.Source == "Src_Dhcp" && Has(Names(e), @"ipad|tab\b|galaxy[-_ ]?tab|tablet|\bsm-t\d"))
-            return new Classification(DeviceType.Tablet, "Src_Name", c.Detail);
+        // Android says nothing about phone, tablet or TV box
+        if (c.Type == DeviceType.Phone && c.Source == "Src_Dhcp")
+        {
+            var names = Names(e);
+            if (Has(names, @"ipad|tab\b|galaxy[-_ ]?tab|tablet|\bsm-t\d")) return new Classification(DeviceType.Tablet, "Src_Name", c.Detail);
+            if (Has(names, @"fire[-_ ]?tv|\baft[a-z]")) return new Classification(DeviceType.FireTv, "Src_Name", c.Detail);
+            if (Has(names, @"webos|bravia|tizen|smart[-_ ]?tv|\btv\b|fernseher|shield")) return new Classification(DeviceType.Tv, "Src_Name", c.Detail);
+        }
         // names only refine generic results
         if (c.Type == DeviceType.Computer && c.Source != "Src_Fingerprint" || c.Type is DeviceType.Iot or DeviceType.AmazonDevice or DeviceType.GoogleDevice)
         {
@@ -213,8 +218,8 @@ public static class DeviceClassifier
         if (android.Success)
         {
             string detail = "Android " + android.Groups[1].Value;
-            // phones are not connected by cable: a wired Android device is a TV or TV box
-            if (e.Wireless == false || Has(vendor, @"TP Vision|Sony Visual|TCL|Hisense|Skyworth|NVIDIA|Philips")) return R(DeviceType.Tv, "Src_Dhcp", detail);
+            // TV makers' MACs mean an Android TV; a cable alone says nothing (phones work with USB-C docks too)
+            if (Has(vendor, @"TP Vision|Sony Visual|TCL|Hisense|Skyworth|NVIDIA|Philips")) return R(DeviceType.Tv, "Src_Dhcp", detail);
             if (!google) return R(DeviceType.Phone, "Src_Dhcp", detail);
         }
         if (google) return R(DeviceType.GoogleDevice, "Src_Vendor", "Google");

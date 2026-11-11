@@ -60,14 +60,16 @@ public sealed class KnownDevices
     {
         knownModel = "";
         if (mac.Length == 0) return c;
-        if (c.Strong)
+        // the operating system (DHCP vendor class "MSFT", Linux ...) changes with every boot of a multi-boot PC:
+        // a computer identified that way is not remembered
+        if (c.Strong && !(c.Source == "Src_Dhcp" && c.Type == DeviceType.Computer))
         {
             Devices[mac] = new KnownDevice { Type = c.Type, Source = c.Source, Detail = c.Detail, Model = model, Seen = DateTime.Now };
             return c;
         }
         // only generic results are replaced: a type refined by name (e.g. Echo Show) stays
         bool generic = c.Type is DeviceType.Computer or DeviceType.Iot or DeviceType.AmazonDevice or DeviceType.GoogleDevice;
-        if (generic && Devices.TryGetValue(mac, out var k))
+        if (generic && Devices.TryGetValue(mac, out var k) && k.Type != c.Type)
         {
             knownModel = k.Model;
             return new Classification(k.Type, "Src_Previous", k.Seen.ToString("g"));
