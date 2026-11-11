@@ -8,6 +8,7 @@ public sealed class AppConfig
     public bool Topology { get; set; } = true;
     public bool PlaceOthers { get; set; } = true;
     public bool Nsdp { get; set; } = true;
+    public bool EasySmart { get; set; } = true;
     public bool Mdns { get; set; } = true;
     public bool Ssdp { get; set; } = true;
     public bool PingSweep { get; set; }

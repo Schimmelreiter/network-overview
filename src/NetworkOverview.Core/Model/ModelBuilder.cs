@@ -111,7 +111,8 @@ public static class ModelBuilder
             n.Name = s.Name.Length > 0 ? s.Name : s.Model;
             n.Model = s.Model;
             if (s.IPv4.Length > 0 && s.IPv4 != "0.0.0.0") n.IPv4 = s.IPv4;
-            n.Ports = string.Join("  ", s.Ports);
+            n.Ports = s.Ports.Count > 0 ? string.Join("  ", s.Ports) : s.PortCount > 0 ? L.T("PortCount", s.PortCount) : "";
+            if (n.Vendor.Length == 0) n.Vendor = s.Vendor;
         }
 
         // 5. further devices from ARP caches and Wi-Fi station lists

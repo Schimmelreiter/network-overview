@@ -36,6 +36,7 @@ var tests = new List<(string Name, Action Body)>
     ("Vendor database", MiscTests.Vendors),
     ("SSDP: headers and device description", MiscTests.SsdpParse),
     ("NSDP: response parsing", MiscTests.NsdpParse),
+    ("TP-Link Easy Smart: packets and discovery answer", MiscTests.EasySmartPackets),
     ("mDNS model hints", MiscTests.MdnsModels),
     ("Localization complete", MiscTests.Localization),
 };
@@ -533,6 +534,34 @@ static class MiscTests
         pkt.AddRange(enc); pkt.AddRange(new byte[] { 1, 2, 3, 4, 0, 0, 0xAA, 0x55 });
         var d = pkt.ToArray();
         Assert.True(Fingerprint.TuyaDecode(d, d.Length).Contains("\"version\":\"3.3\""), "Tuya decoded");
+    }
+
+    public static void EasySmartPackets()
+    {
+        // known first bytes of the TP-Link key stream: an all-zero packet encrypts to the key stream itself
+        var ks = EasySmart.Crypt(new byte[4]);
+        Assert.True(ks.Length == 4 && EasySmart.Crypt(ks).All(b => b == 0), "RC4 is symmetric");
+        var host = new byte[] { 0xd8, 0x43, 0xae, 0x43, 0x15, 0x1a };
+        var probe = EasySmart.Build(0, new byte[6], host, 42, Array.Empty<(ushort, byte[])>());
+        Assert.Equal(36, probe.Length, "probe length");
+        Assert.True(probe[0] == 1 && probe[1] == 0 && probe[21] == 36 && probe[15] == 42, "probe header");
+        Assert.True(EasySmart.Parse(probe) == null, "own probe is no answer");
+
+        var sw = new byte[] { 0x50, 0xd4, 0xf7, 0x11, 0x22, 0x33 };
+        var answer = EasySmart.Build(2, sw, host, 42, new (ushort, byte[])[]
+        {
+            (1, Encoding.ASCII.GetBytes("TL-SG108E\0")), (2, Encoding.ASCII.GetBytes("Switch-Flur\0")), (3, sw),
+            (4, new byte[] { 192, 168, 75, 8 }), (7, Encoding.ASCII.GetBytes("1.0.0 Build 20230218 Rel.50633\0")),
+            (8, Encoding.ASCII.GetBytes("TL-SG108E 6.0\0")), (10, new byte[] { 8 }),
+        });
+        var d = EasySmart.Parse(EasySmart.Crypt(EasySmart.Crypt(answer)));
+        Assert.True(d != null, "answer parsed");
+        Assert.Equal("TL-SG108E 6.0", d!.Model, "model with hardware version");
+        Assert.Equal("Switch-Flur", d.Name, "name");
+        Assert.Equal("50:d4:f7:11:22:33", d.Mac, "mac");
+        Assert.Equal("192.168.75.8", d.IPv4, "ip");
+        Assert.Equal(8, d.PortCount, "ports");
+        Assert.Equal("TP-Link", d.Vendor, "vendor");
     }
 
     public static void KnownAndCache()

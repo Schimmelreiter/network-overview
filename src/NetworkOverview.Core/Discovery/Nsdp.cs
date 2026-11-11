@@ -12,6 +12,8 @@ public sealed class NsdpDevice
     public string Name { get; set; } = "";
     public string IPv4 { get; set; } = "";
     public string Firmware { get; set; } = "";
+    public string Vendor { get; set; } = "Netgear";
+    public int PortCount { get; set; }
     public List<string> Ports { get; } = new();
 }
 
