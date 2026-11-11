@@ -92,8 +92,10 @@ public sealed class ScanController
             // devices that are switched off (e.g. a rarely used AP) are skipped without a warning
             if (!Reachable(t)) { Log($"OpenWrt {t}: no answer to ping, skipped"); continue; }
             var o = OpenWrtClient.Query(t);
-            Log(o.Ok ? $"OpenWrt {t}: {o.Name}, {o.Interfaces.Count} interfaces, {o.Fdb.Count} FDB, {o.Stations.Count} Wi-Fi clients, {o.Leases.Count} leases"
+            Log(o.Ok ? $"OpenWrt {t}: {o.Name}, {o.Interfaces.Count} interfaces, {o.Fdb.Count} FDB, {o.Stations.Count} Wi-Fi clients, {o.Leases.Count} leases, {o.DhcpVendor.Count} DHCP vendor classes"
                      : $"OpenWrt {t}: {o.Error}");
+            if (o.Ok && o.DhcpServer && !o.LogDhcp)
+                Log($"OpenWrt {t}: DHCP vendor classes are not logged (uci set dhcp.@dnsmasq[0].logdhcp=1; uci commit dhcp; /etc/init.d/dnsmasq restart)");
             owrt.Add(o);
         }
 

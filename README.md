@@ -38,6 +38,11 @@ protocol.
   address. User-given names (DHCP/DNS) are only used last to refine a generic result and can be
   switched off. The details show how each device was identified. Once identified, a device keeps
   its type when it is in standby or switched off later.
+- **DHCP vendor classes** from the OpenWrt router's log (option 60, e.g. `android-dhcp-14`,
+  `MSFT 5.0`): Android devices are recognized even in standby. dnsmasq logs them only when DHCP
+  logging is enabled on the router:
+  `uci set dhcp.@dnsmasq[0].logdhcp=1; uci commit dhcp; /etc/init.d/dnsmasq restart`.
+  A device appears after its next DHCP renewal; the scan log says when the router does not log them.
 - **Last map at start-up**: the previous map is shown immediately while a new scan runs.
 - Light and dark mode following Windows, languages German, English, Spanish and French.
 - Tooltips and details, context menu (web interface, shares, video streams of motionEye servers,

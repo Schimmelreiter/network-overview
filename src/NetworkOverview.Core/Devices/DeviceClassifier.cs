@@ -82,6 +82,8 @@ public sealed class DeviceEvidence
     public string UpnpModel { get; set; } = "";
     public FingerprintInfo? Fingerprint { get; set; }
     public bool Lltd { get; set; }
+    /// <summary>DHCP vendor class (option 60), e.g. "android-dhcp-14" or "MSFT 5.0".</summary>
+    public string DhcpVendor { get; set; } = "";
     public bool? Wireless { get; set; }
     public bool UseNames { get; set; } = true;
 }
@@ -90,7 +92,7 @@ public sealed class DeviceEvidence
 public readonly record struct Classification(DeviceType Type, string Source, string Detail = "")
 {
     /// <summary>Sources based on what the device itself announced or answered (not vendor or name alone).</summary>
-    public bool Strong => Source is "Src_Mdns" or "Src_Ssdp" or "Src_Fingerprint";
+    public bool Strong => Source is "Src_Mdns" or "Src_Ssdp" or "Src_Fingerprint" or "Src_Dhcp";
 }
 
 /// <summary>Determines the device type. Order of evidence: what the device announces (mDNS, SSDP/UPnP) or answers
@@ -111,6 +113,9 @@ public static class DeviceClassifier
     {
         var c = Evidence(e);
         if (!e.UseNames) return c;
+        // Android says nothing about phone or tablet
+        if (c.Type == DeviceType.Phone && c.Source == "Src_Dhcp" && Has(Names(e), @"ipad|tab\b|galaxy[-_ ]?tab|tablet|\bsm-t\d"))
+            return new Classification(DeviceType.Tablet, "Src_Name", c.Detail);
         // names only refine generic results
         if (c.Type == DeviceType.Computer && c.Source != "Src_Fingerprint" || c.Type is DeviceType.Iot or DeviceType.AmazonDevice or DeviceType.GoogleDevice)
         {
@@ -203,6 +208,15 @@ public static class DeviceClassifier
                 || (mdns.HasType("_matter") && !mdns.HasType("_home-assistant") && !mdns.HasType("_smb")))
                 return R(DeviceType.Iot, "Src_Mdns");
         }
+        // --- DHCP vendor class: Android (after Amazon, Google and TV evidence: Fire OS and Android TV send it too) ---
+        var android = Regex.Match(e.DhcpVendor, @"^android-dhcp-(\d+)", RegexOptions.IgnoreCase);
+        if (android.Success)
+        {
+            string detail = "Android " + android.Groups[1].Value;
+            // phones are not connected by cable: a wired Android device is a TV or TV box
+            if (e.Wireless == false || Has(vendor, @"TP Vision|Sony Visual|TCL|Hisense|Skyworth|NVIDIA|Philips")) return R(DeviceType.Tv, "Src_Dhcp", detail);
+            if (!google) return R(DeviceType.Phone, "Src_Dhcp", detail);
+        }
         if (google) return R(DeviceType.GoogleDevice, "Src_Vendor", "Google");
 
         // --- 5. vendor of the MAC address (and Wi-Fi modules typical for one kind of device) ---
@@ -223,6 +237,7 @@ public static class DeviceClassifier
             return e.Lltd ? R(DeviceType.Computer, "Src_Lltd") : R(DeviceType.Iot, "Src_Vendor");
         if (prefix is "00:1c:c2" or "7c:fa:80") return R(DeviceType.Iot, "Src_Vendor", "Wi-Fi module");   // Dreo fan heater, Worx Landroid
         if (fp != null && fp.Banner(@"^SSH-") && !fp.Any("dropbear")) return R(DeviceType.Computer, "Src_Fingerprint", "SSH");
+        if (Has(e.DhcpVendor, @"^MSFT")) return R(DeviceType.Computer, "Src_Dhcp", "Windows");
         return R(DeviceType.Computer, e.Lltd ? "Src_Lltd" : "Src_Default");
     }
 
@@ -248,7 +263,7 @@ public static class DeviceClassifier
         if (Has(names, @"vu\+|vuplus|\b(duo|solo|uno|zero|ultimo)(2|4k|4kse|se)\b|\bultimo|gigablue|\bgb[-_ ]?(quad|ue|trio|ip)|dreambox|\bdm\d{3,4}\b|enigma|zgemma|osmio|\bet\d{4}\b|quadbox|formuler|(?<!av[-_ ]?)receiver|set[-_ ]?top|sat[-_ ]?box"))
             return DeviceType.Receiver;
         if (Has(names, @"webos|lgwebos|bravia|tizen|smart[-_ ]?tv|\btv\b|fernseher")) return DeviceType.Tv;
-        if (Has(names, @"ipad|\btab\b|galaxy[-_ ]?tab|tablet|\bsm-t\d")) return DeviceType.Tablet;
+        if (Has(names, @"ipad|tab\b|galaxy[-_ ]?tab|tablet|\bsm-t\d")) return DeviceType.Tablet;
         if (Has(names, @"iphone|pixel|galaxy|\bnote\s?\d|\bs\d{2}\b|\ba\d{2}s?\b|redmi|xiaomi|huawei|oneplus|android|motorola|\bmoto\b|smartphone|handy|phone"))
             return DeviceType.Phone;
         if (Has(names, @"printer|drucker|imprimante|impresora|\bmfc|laserjet|officejet|deskjet")) return DeviceType.Printer;

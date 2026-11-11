@@ -31,6 +31,7 @@ var tests = new List<(string Name, Action Body)>
     ("OpenWrt: parse script output", MiscTests.OpenWrtParse),
     ("Device classifier", MiscTests.Classifier),
     ("Device classifier: evidence before names", MiscTests.ClassifierEvidence),
+    ("DHCP vendor classes from the OpenWrt log", MiscTests.DhcpVendorClasses),
     ("Known devices and map cache", MiscTests.KnownAndCache),
     ("Fingerprint: local web servers, motionEye streams, Tuya decoding", MiscTests.FingerprintLocal),
     ("Vendor database", MiscTests.Vendors),
@@ -562,6 +563,36 @@ static class MiscTests
         Assert.Equal("192.168.75.8", d.IPv4, "ip");
         Assert.Equal(8, d.PortCount, "ports");
         Assert.Equal("TP-Link", d.Vendor, "vendor");
+    }
+
+    public static void DhcpVendorClasses()
+    {
+        var o = new OpenWrtInfo();
+        OpenWrtClient.Parse(string.Join("\n", new[]
+        {
+            "##HOST Link", "##IF br-lan 14:91:82:37:73:0d", "##LOGDHCP 1",
+            "##DHCP Wed Nov 11 10:00:01 2026 daemon.info dnsmasq-dhcp[1234]: 3542124876 vendor class: android-dhcp-14",
+            "##DHCP Wed Nov 11 10:00:01 2026 daemon.info dnsmasq-dhcp[1234]: 3542124876 DHCPREQUEST(br-lan) 192.168.75.105 8c:b8:4a:f6:db:89",
+            "##DHCP Wed Nov 11 10:00:01 2026 daemon.info dnsmasq-dhcp[1234]: 3542124876 DHCPACK(br-lan) 192.168.75.105 8c:b8:4a:f6:db:89 Galaxy",
+            "##DHCP Wed Nov 11 10:05:00 2026 daemon.info dnsmasq-dhcp[1234]: 99 vendor class: MSFT 5.0",
+            "##DHCP Wed Nov 11 10:05:00 2026 daemon.info dnsmasq-dhcp[1234]: 99 DHCPDISCOVER(br-lan) d8:43:ae:43:15:1a",
+            "##DHCP Wed Nov 11 10:06:00 2026 daemon.info dnsmasq-dhcp[1234]: 100 vendor class: udhcp 1.36.1",
+        }), o);
+        Assert.Equal("android-dhcp-14", o.DhcpVendor.GetValueOrDefault("8c:b8:4a:f6:db:89") ?? "", "android");
+        Assert.Equal("MSFT 5.0", o.DhcpVendor.GetValueOrDefault("d8:43:ae:43:15:1a") ?? "", "windows");
+        Assert.Equal(2, o.DhcpVendor.Count, "transaction without MAC ignored");
+        Assert.True(o.LogDhcp, "logdhcp");
+
+        Classification K(string mac, string dhcp, string name = "", bool? wireless = true) =>
+            DeviceClassifier.Classify(new DeviceEvidence { Mac = mac, Vendor = VendorDb.Lookup(mac), Name = name, DhcpVendor = dhcp, Wireless = wireless });
+        var c = K("8c:b8:4a:f6:db:89", "android-dhcp-14");
+        Assert.Equal(DeviceType.Phone, c.Type, "Android phone"); Assert.Equal("Src_Dhcp", c.Source, "source"); Assert.Equal("Android 14", c.Detail, "detail");
+        Assert.Equal(DeviceType.Tablet, K("8c:83:e1:f4:90:aa", "android-dhcp-13", "quattrotab").Type, "tablet by name");
+        Assert.Equal(DeviceType.Tv, K("24:fc:e5:90:83:d4", "android-dhcp-11", "", false).Type, "wired Android = TV");
+        Assert.Equal(DeviceType.EchoDot, DeviceClassifier.Classify(new DeviceEvidence { Mac = "18:0b:1b:27:97:ec", Vendor = VendorDb.Lookup("18:0b:1b:27:97:ec"),
+            DhcpVendor = "android-dhcp-9", Fingerprint = new FingerprintInfo { Open = { [4070] = "" } }, Wireless = true }).Type, "Fire OS Echo stays Echo");
+        Assert.Equal(DeviceType.Computer, K("d8:43:ae:43:15:1a", "MSFT 5.0").Type, "Windows");
+        Assert.Equal("Src_Dhcp", K("d8:43:ae:43:15:1a", "MSFT 5.0").Source, "Windows source");
     }
 
     public static void KnownAndCache()

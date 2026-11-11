@@ -164,6 +164,8 @@ public static class L
         ["Src_Fingerprint"] = new[] { "Antworten des Geräts", "device answers", "respuestas del dispositivo", "réponses de l’appareil" },
         ["Src_Vendor"] = new[] { "Hersteller der MAC-Adresse", "vendor of the MAC address", "fabricante de la dirección MAC", "fabricant de l’adresse MAC" },
         ["Src_Name"] = new[] { "Gerätename", "device name", "nombre del dispositivo", "nom de l’appareil" },
+        ["Src_Dhcp"] = new[] { "DHCP-Herstellerkennung", "DHCP vendor class", "clase de proveedor DHCP", "classe fournisseur DHCP" },
+        ["DhcpVendor"] = new[] { "DHCP-Kennung: {0}", "DHCP vendor class: {0}", "Clase de proveedor DHCP: {0}", "Classe fournisseur DHCP : {0}" },
         ["Src_Previous"] = new[] { "früheren Scan", "earlier scan", "escaneo anterior", "analyse précédente" },
         ["Src_Lltd"] = new[] { "LLTD-Responder", "LLTD responder", "respondedor LLTD", "répondeur LLTD" },
         ["Src_Default"] = new[] { "keine Merkmale", "no characteristics", "sin características", "aucune caractéristique" },

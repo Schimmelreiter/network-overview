@@ -37,6 +37,7 @@ public static class NodeText
         foreach (var s in n.Notes) l.Add("⚠ " + s);
         if (n.MdnsServices.Count > 0) l.Add(L.T("Services", string.Join(", ", n.MdnsServices)));
         if (n.OpenPorts.Length > 0) l.Add(L.T("OpenPorts", n.OpenPorts));
+        if (n.DhcpVendor.Length > 0) l.Add(L.T("DhcpVendor", n.DhcpVendor));
         foreach (var s in n.Streams) l.Add(L.T("Stream", s));
         var p = m.ParentOf(n);
         if (p != null) l.Add(L.T("ConnectedTo", p.Title));
